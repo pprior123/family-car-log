@@ -1,0 +1,780 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Family Vehicle Log</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+       
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+       
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+       
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+       
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+       
+        h2 {
+            color: #333;
+            margin-bottom: 16px;
+            font-size: 1.3em;
+        }
+       
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+       
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            transition: background 0.2s;
+        }
+       
+        button:hover {
+            background: #5568d3;
+        }
+       
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+       
+        button.secondary {
+            background: #e0e0e0;
+            color: #333;
+        }
+       
+        button.secondary:hover {
+            background: #d0d0d0;
+        }
+       
+        button.small {
+            padding: 8px 16px;
+            font-size: 14px;
+        }
+       
+        input, select, textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 16px;
+            margin-top: 8px;
+        }
+       
+        input:focus, select:focus, textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+       
+        label {
+            font-weight: 600;
+            color: #555;
+            display: block;
+            margin-bottom: 4px;
+        }
+       
+        .form-group {
+            margin-bottom: 20px;
+        }
+       
+        .log-entry {
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 12px;
+            transition: box-shadow 0.2s;
+        }
+       
+        .log-entry:hover {
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+       
+        .log-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            margin-bottom: 8px;
+        }
+       
+        .log-vehicle {
+            font-weight: bold;
+            font-size: 1.2em;
+            color: #333;
+        }
+       
+        .log-date {
+            color: #666;
+            font-size: 0.9em;
+            margin-top: 4px;
+        }
+       
+        .log-odometer {
+            font-weight: bold;
+            color: #667eea;
+            font-size: 1.1em;
+        }
+       
+        .log-category {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.8em;
+            margin-top: 4px;
+        }
+       
+        .log-notes {
+            color: #555;
+            margin-top: 12px;
+            padding: 12px;
+            background: #f5f5f5;
+            border-radius: 6px;
+        }
+       
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 16px;
+            margin-top: 16px;
+        }
+       
+        .stat-box {
+            padding: 16px;
+            border-radius: 8px;
+            text-align: center;
+        }
+       
+        .stat-box.blue { background: #e3f2fd; }
+        .stat-box.green { background: #e8f5e9; }
+        .stat-box.purple { background: #f3e5f5; }
+        .stat-box.orange { background: #fff3e0; }
+       
+        .stat-label {
+            font-size: 0.85em;
+            color: #666;
+            margin-bottom: 4px;
+        }
+       
+        .stat-value {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #333;
+        }
+       
+        .button-group {
+            display: flex;
+            gap: 12px;
+            margin-top: 20px;
+        }
+       
+        .button-group button {
+            flex: 1;
+        }
+       
+        .hidden {
+            display: none;
+        }
+       
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #999;
+        }
+       
+        .empty-state svg {
+            width: 80px;
+            height: 80px;
+            margin-bottom: 16px;
+            opacity: 0.3;
+        }
+       
+        .info-box {
+            background: #e3f2fd;
+            border: 2px solid #2196f3;
+            border-radius: 8px;
+            padding: 16px;
+            color: #1565c0;
+            margin-top: 20px;
+        }
+       
+        .warning-box {
+            background: #fff3e0;
+            border: 2px solid #ff9800;
+            border-radius: 8px;
+            padding: 16px;
+            color: #e65100;
+            margin-bottom: 20px;
+        }
+       
+        .sync-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 600;
+        }
+       
+        .sync-status.synced {
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+       
+        .sync-status.syncing {
+            background: #fff3e0;
+            color: #f57c00;
+        }
+       
+        .sync-status.offline {
+            background: #ffebee;
+            color: #c62828;
+        }
+       
+        .loading-spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+       
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+       
+        .setup-section {
+            background: #f5f5f5;
+            padding: 16px;
+            border-radius: 8px;
+            margin-top: 12px;
+        }
+       
+        .code-box {
+            background: #2d2d2d;
+            color: #f8f8f2;
+            padding: 12px;
+            border-radius: 6px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            overflow-x: auto;
+            margin: 8px 0;
+        }
+       
+        @media (max-width: 600px) {
+            body {
+                padding: 10px;
+            }
+           
+            .card {
+                padding: 16px;
+            }
+           
+            h1 {
+                font-size: 1.5em;
+            }
+           
+            .stats {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Setup Instructions -->
+        <div id="setupCard" class="card">
+            <h2>⚙️ One-Time Setup Required</h2>
+            <p style="margin-bottom: 16px;">To enable cloud syncing between devices, you need to create a simple storage link. This takes 2 minutes:</p>
+           
+            <div class="setup-section">
+                <strong>Step 1:</strong> Go to <a href="https://gist.github.com/" target="_blank">gist.github.com</a><br>
+                <strong>Step 2:</strong> Create a new Gist with:<br>
+                - Filename: <code>vehicle-logs.json</code><br>
+                - Content: <div class="code-box">{"logs":[]}</div>
+                <strong>Step 3:</strong> Click "Create public gist"<br>
+                <strong>Step 4:</strong> Copy the Gist ID from the URL (the long code after your username)<br>
+                <strong>Step 5:</strong> Paste it below:
+            </div>
+           
+            <div class="form-group" style="margin-top: 16px;">
+                <label>Your Gist ID:</label>
+                <input type="text" id="gistId" placeholder="e.g., abc123def456...">
+            </div>
+           
+            <button onclick="saveGistId()">Save & Start Using App</button>
+           
+            <div style="margin-top: 20px; padding: 12px; background: #fff3e0; border-radius: 6px; font-size: 0.9em;">
+                <strong>Alternative:</strong> Skip cloud sync and <button class="small secondary" onclick="useLocalOnly()">Use Local Storage Only</button><br>
+                <small>(Data won't sync between devices, but app works immediately)</small>
+            </div>
+        </div>
+       
+        <!-- Settings Modal -->
+        <div id="settingsCard" class="card hidden">
+            <h2>⚙️ Settings</h2>
+           
+            <div class="info-box" style="margin-bottom: 20px;">
+                <strong>Current Mode:</strong> <span id="currentMode">Local Storage</span>
+            </div>
+           
+            <div class="form-group">
+                <label>Switch to Cloud Sync</label>
+                <p style="font-size: 0.9em; color: #666; margin-bottom: 12px;">
+                    Enable cloud syncing to access your logs from multiple devices via GitHub Gist.
+                </p>
+                <input type="text" id="settingsGistId" placeholder="Enter your Gist ID (e.g., abc123def456...)">
+                <button onclick="switchToCloud()" style="margin-top: 12px;">Enable Cloud Sync</button>
+            </div>
+           
+            <div style="margin-top: 20px; padding: 12px; background: #f5f5f5; border-radius: 6px;">
+                <p style="font-size: 0.9em; margin-bottom: 8px;"><strong>Don't have a Gist ID?</strong></p>
+                <ol style="font-size: 0.9em; color: #666; padding-left: 20px;">
+                    <li>Go to <a href="https://gist.github.com/" target="_blank">gist.github.com</a></li>
+                    <li>Create new Gist: filename = <code>vehicle-logs.json</code>, content = <code>{"logs":[]}</code></li>
+                    <li>Click "Create public gist"</li>
+                    <li>Copy the long ID from the URL and paste it above</li>
+                </ol>
+            </div>
+           
+            <div class="button-group" style="margin-top: 20px;">
+                <button class="secondary" onclick="hideSettings()">Close</button>
+            </div>
+        </div>
+       
+        <!-- Main App (hidden until setup) -->
+        <div id="mainApp" class="hidden">
+            <div class="card">
+                <div class="header">
+                    <div>
+                        <h1>🚗 Family Vehicle Log</h1>
+                        <span id="syncStatus" class="sync-status synced">✓ Local Mode</span>
+                    </div>
+                    <div style="display: flex; gap: 12px;">
+                        <button class="secondary small" onclick="showSettings()">⚙️ Settings</button>
+                        <button id="addButton" onclick="toggleAddForm()">➕ Add Log</button>
+                    </div>
+                </div>
+               
+                <div class="form-group">
+                    <label>Filter by Vehicle</label>
+                    <select id="vehicleFilter" onchange="filterLogs()">
+                        <option value="all">All Vehicles</option>
+                    </select>
+                </div>
+            </div>
+           
+            <div id="addForm" class="card hidden">
+                <h2>Add New Log Entry</h2>
+               
+                <div class="form-group">
+                    <label>Vehicle Name *</label>
+                    <input type="text" id="vehicleName" placeholder="e.g., Honda Civic, Toyota Camry" list="vehicleList">
+                    <datalist id="vehicleList"></datalist>
+                </div>
+               
+                <div class="form-group">
+                    <label>Current Odometer (km) *</label>
+                    <input type="number" id="odometer" placeholder="e.g., 45000">
+                </div>
+               
+                <div class="form-group">
+                    <label>Category</label>
+                    <select id="category">
+                        <option value="maintenance">Maintenance</option>
+                        <option value="fuel">Fuel</option>
+                        <option value="tires">Tires</option>
+                        <option value="repair">Repair</option>
+                        <option value="inspection">Inspection</option>
+                        <option value="other">Other</option>
+                    </select>
+                </div>
+               
+                <div class="form-group">
+                    <label>Notes</label>
+                    <textarea id="notes" rows="3" placeholder="e.g., Changed oil, Rotated tires, Installed new tires"></textarea>
+                </div>
+               
+                <div class="button-group">
+                    <button onclick="saveLog()">Save Log Entry</button>
+                    <button class="secondary" onclick="toggleAddForm()">Cancel</button>
+                </div>
+            </div>
+           
+            <div id="statsCard" class="card hidden"></div>
+           
+            <div class="card">
+                <h2 id="logsTitle">All Logs</h2>
+                <div id="logsList">
+                    <div class="empty-state">
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
+                        </svg>
+                        <p style="font-size: 1.2em; margin-bottom: 8px;">No logs yet</p>
+                        <p>Click "Add Log" to create your first entry!</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let logs = [];
+        let currentFilter = 'all';
+        let gistId = null;
+        let useCloud = false;
+       
+        // Check if already configured
+        function init() {
+            gistId = localStorage.getItem('vehicleLogGistId');
+            useCloud = localStorage.getItem('vehicleLogUseCloud') === 'true';
+           
+            if (gistId || !useCloud) {
+                document.getElementById('setupCard').classList.add('hidden');
+                document.getElementById('mainApp').classList.remove('hidden');
+                loadLogs();
+               
+                if (useCloud && gistId) {
+                    updateSyncStatus('synced');
+                    document.getElementById('syncStatus').innerHTML = '☁️ Cloud Mode';
+                }
+            }
+        }
+       
+        // Save Gist ID
+        window.saveGistId = function() {
+            const id = document.getElementById('gistId').value.trim();
+            if (!id) {
+                alert('Please enter your Gist ID');
+                return;
+            }
+           
+            localStorage.setItem('vehicleLogGistId', id);
+            localStorage.setItem('vehicleLogUseCloud', 'true');
+            gistId = id;
+            useCloud = true;
+           
+            document.getElementById('setupCard').classList.add('hidden');
+            document.getElementById('mainApp').classList.remove('hidden');
+            document.getElementById('syncStatus').innerHTML = '☁️ Cloud Mode';
+            loadLogs();
+        }
+       
+        // Use local storage only
+        window.useLocalOnly = function() {
+            localStorage.setItem('vehicleLogUseCloud', 'false');
+            useCloud = false;
+           
+            document.getElementById('setupCard').classList.add('hidden');
+            document.getElementById('mainApp').classList.remove('hidden');
+            document.getElementById('syncStatus').innerHTML = '💾 Local Mode';
+            loadLogs();
+        }
+       
+        // Update sync status
+        function updateSyncStatus(status) {
+            const statusEl = document.getElementById('syncStatus');
+            if (status === 'synced') {
+                statusEl.className = 'sync-status synced';
+                statusEl.innerHTML = useCloud ? '☁️ Synced' : '💾 Saved';
+            } else if (status === 'syncing') {
+                statusEl.className = 'sync-status syncing';
+                statusEl.innerHTML = '⏳ Syncing...';
+            } else {
+                statusEl.className = 'sync-status offline';
+                statusEl.innerHTML = '⚠️ Error';
+            }
+        }
+       
+        // Load logs
+        function loadLogs() {
+            const saved = localStorage.getItem('vehicleLogs');
+            if (saved) {
+                logs = JSON.parse(saved);
+                updateUI();
+            }
+        }
+       
+        // Save logs
+        function saveLogs() {
+            localStorage.setItem('vehicleLogs', JSON.stringify(logs));
+            updateSyncStatus('synced');
+        }
+       
+        // Toggle add form
+        window.toggleAddForm = function() {
+            const form = document.getElementById('addForm');
+            form.classList.toggle('hidden');
+           
+            if (!form.classList.contains('hidden')) {
+                document.getElementById('vehicleName').focus();
+            }
+        }
+       
+        // Save a new log
+        window.saveLog = function() {
+            const vehicle = document.getElementById('vehicleName').value.trim();
+            const odometer = parseInt(document.getElementById('odometer').value);
+            const category = document.getElementById('category').value;
+            const notes = document.getElementById('notes').value.trim();
+           
+            if (!vehicle) {
+                alert('Please enter a vehicle name');
+                return;
+            }
+           
+            if (!odometer || odometer <= 0) {
+                alert('Please enter a valid odometer reading');
+                return;
+            }
+           
+            const now = new Date();
+            const log = {
+                id: Date.now() + Math.random().toString(36).substr(2, 9),
+                vehicle: vehicle,
+                odometer: odometer,
+                category: category,
+                notes: notes,
+                date: now.toISOString(),
+                displayDate: now.toLocaleDateString(),
+                displayTime: now.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})
+            };
+           
+            logs.push(log);
+            logs.sort((a, b) => new Date(b.date) - new Date(a.date));
+            saveLogs();
+           
+            // Reset form
+            document.getElementById('vehicleName').value = vehicle;
+            document.getElementById('odometer').value = '';
+            document.getElementById('notes').value = '';
+            document.getElementById('category').value = 'maintenance';
+           
+            toggleAddForm();
+            updateUI();
+        }
+       
+        // Filter logs
+        window.filterLogs = function() {
+            currentFilter = document.getElementById('vehicleFilter').value;
+            updateUI();
+        }
+       
+        // Get vehicles
+        function getVehicles() {
+            return [...new Set(logs.map(log => log.vehicle))];
+        }
+       
+        // Get vehicle stats
+        function getVehicleStats(vehicle) {
+            const vehicleLogs = logs.filter(log => log.vehicle === vehicle);
+            if (vehicleLogs.length === 0) return null;
+           
+            const sorted = [...vehicleLogs].sort((a, b) => a.odometer - b.odometer);
+            const totalDistance = sorted[sorted.length - 1].odometer - sorted[0].odometer;
+            const latestOdometer = Math.max(...vehicleLogs.map(log => log.odometer));
+           
+            return {
+                totalLogs: vehicleLogs.length,
+                latestOdometer: latestOdometer,
+                totalDistance: totalDistance,
+                firstLog: sorted[0].displayDate,
+                lastLog: sorted[sorted.length - 1].displayDate
+            };
+        }
+       
+        // Update UI
+        function updateUI() {
+            updateVehicleFilter();
+            updateVehicleDatalist();
+            updateStats();
+            updateLogsList();
+        }
+       
+        // Update vehicle filter
+        function updateVehicleFilter() {
+            const filter = document.getElementById('vehicleFilter');
+            const vehicles = getVehicles();
+            const currentValue = filter.value;
+           
+            filter.innerHTML = `<option value="all">All Vehicles (${logs.length} logs)</option>`;
+            vehicles.forEach(vehicle => {
+                const count = logs.filter(log => log.vehicle === vehicle).length;
+                filter.innerHTML += `<option value="${vehicle}">${vehicle} (${count} logs)</option>`;
+            });
+           
+            filter.value = currentValue;
+        }
+       
+        // Update datalist
+        function updateVehicleDatalist() {
+            const datalist = document.getElementById('vehicleList');
+            const vehicles = getVehicles();
+           
+            datalist.innerHTML = '';
+            vehicles.forEach(vehicle => {
+                datalist.innerHTML += `<option value="${vehicle}">`;
+            });
+        }
+       
+        // Update stats
+        function updateStats() {
+            const statsCard = document.getElementById('statsCard');
+           
+            if (currentFilter === 'all') {
+                statsCard.classList.add('hidden');
+                return;
+            }
+           
+            const stats = getVehicleStats(currentFilter);
+            if (!stats) {
+                statsCard.classList.add('hidden');
+                return;
+            }
+           
+            statsCard.classList.remove('hidden');
+            statsCard.innerHTML = `
+                <h2>${currentFilter} - Statistics</h2>
+                <div class="stats">
+                    <div class="stat-box blue">
+                        <div class="stat-label">Total Logs</div>
+                        <div class="stat-value">${stats.totalLogs}</div>
+                    </div>
+                    <div class="stat-box green">
+                        <div class="stat-label">Latest Odometer</div>
+                        <div class="stat-value">${stats.latestOdometer.toLocaleString()} km</div>
+                    </div>
+                    <div class="stat-box purple">
+                        <div class="stat-label">Distance Tracked</div>
+                        <div class="stat-value">${stats.totalDistance.toLocaleString()} km</div>
+                    </div>
+                    <div class="stat-box orange">
+                        <div class="stat-label">First Log</div>
+                        <div class="stat-value" style="font-size: 1.1em;">${stats.firstLog}</div>
+                    </div>
+                </div>
+            `;
+        }
+       
+        // Update logs list
+        function updateLogsList() {
+            const logsList = document.getElementById('logsList');
+            const logsTitle = document.getElementById('logsTitle');
+           
+            const filteredLogs = currentFilter === 'all'
+                ? logs
+                : logs.filter(log => log.vehicle === currentFilter);
+           
+            logsTitle.textContent = currentFilter === 'all' ? 'All Logs' : `${currentFilter} Logs`;
+           
+            if (filteredLogs.length === 0) {
+                logsList.innerHTML = `
+                    <div class="empty-state">
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
+                        </svg>
+                        <p style="font-size: 1.2em; margin-bottom: 8px;">No logs yet</p>
+                        <p>Click "Add Log" to create your first entry!</p>
+                    </div>
+                `;
+                return;
+            }
+           
+            logsList.innerHTML = '';
+            filteredLogs.forEach(log => {
+                const logDiv = document.createElement('div');
+                logDiv.className = 'log-entry';
+                logDiv.innerHTML = `
+                    <div class="log-header">
+                        <div>
+                            <div class="log-vehicle">${log.vehicle}</div>
+                            <div class="log-date">📅 ${log.displayDate} at ${log.displayTime}</div>
+                        </div>
+                        <div style="text-align: right;">
+                            <div class="log-odometer">⏲️ ${log.odometer.toLocaleString()} km</div>
+                            <div class="log-category">${log.category}</div>
+                        </div>
+                    </div>
+                    ${log.notes ? `<div class="log-notes">${log.notes}</div>` : ''}
+                `;
+                logsList.appendChild(logDiv);
+            });
+        }
+       
+        // Show settings
+        window.showSettings = function() {
+            document.getElementById('settingsCard').classList.remove('hidden');
+            const mode = useCloud ? `☁️ Cloud Mode (Gist ID: ${gistId})` : '💾 Local Storage Only';
+            document.getElementById('currentMode').textContent = mode;
+        }
+       
+        // Hide settings
+        window.hideSettings = function() {
+            document.getElementById('settingsCard').classList.add('hidden');
+        }
+       
+        // Switch to cloud
+        window.switchToCloud = function() {
+            const id = document.getElementById('settingsGistId').value.trim();
+            if (!id) {
+                alert('Please enter your Gist ID');
+                return;
+            }
+           
+            localStorage.setItem('vehicleLogGistId', id);
+            localStorage.setItem('vehicleLogUseCloud', 'true');
+            gistId = id;
+            useCloud = true;
+           
+            document.getElementById('syncStatus').innerHTML = '☁️ Cloud Mode';
+            updateSyncStatus('synced');
+            hideSettings();
+            alert('Cloud sync enabled! Your logs will now sync to GitHub Gist.');
+        }
+       
+        // Initialize
+        init();
+    </script>
+</body>
+</html> 
