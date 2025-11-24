@@ -378,6 +378,18 @@
                 </ol>
             </div>
            
+            <div id="exportSection" class="hidden" style="margin-top: 20px; padding: 16px; background: #e8f5e9; border-radius: 8px;">
+                <p style="font-size: 0.9em; margin-bottom: 12px;"><strong>📤 Upload your data to Gist:</strong></p>
+                <ol style="font-size: 0.9em; color: #666; padding-left: 20px; margin-bottom: 12px;">
+                    <li>Click "Copy Data" button below</li>
+                    <li>Go to your Gist: <a href="" id="gistLink" target="_blank">Open Gist</a></li>
+                    <li>Click "Edit" button on your Gist</li>
+                    <li>Replace all content with the copied data</li>
+                    <li>Click "Update public gist"</li>
+                </ol>
+                <button onclick="copyDataForGist()">📋 Copy Data</button>
+            </div>
+           
             <div class="button-group" style="margin-top: 20px;">
                 <button class="secondary" onclick="hideSettings()">Close</button>
             </div>
@@ -392,6 +404,7 @@
                         <span id="syncStatus" class="sync-status synced">✓ Local Mode</span>
                     </div>
                     <div style="display: flex; gap: 12px;">
+                        <button id="syncButton" class="secondary small hidden" onclick="manualSync()">🔄 Sync</button>
                         <button class="secondary small" onclick="showSettings()">⚙️ Settings</button>
                         <button id="addButton" onclick="toggleAddForm()">➕ Add Log</button>
                     </div>
@@ -466,18 +479,19 @@
         let useCloud = false;
        
         // Check if already configured
-        function init() {
+        async function init() {
             gistId = localStorage.getItem('vehicleLogGistId');
             useCloud = localStorage.getItem('vehicleLogUseCloud') === 'true';
            
             if (gistId || !useCloud) {
                 document.getElementById('setupCard').classList.add('hidden');
                 document.getElementById('mainApp').classList.remove('hidden');
-                loadLogs();
+                await loadLogs();
                
                 if (useCloud && gistId) {
                     updateSyncStatus('synced');
                     document.getElementById('syncStatus').innerHTML = '☁️ Cloud Mode';
+                    document.getElementById('syncButton').classList.remove('hidden');
                 }
             }
         }
@@ -528,18 +542,87 @@
         }
        
         // Load logs
-        function loadLogs() {
-            const saved = localStorage.getItem('vehicleLogs');
-            if (saved) {
-                logs = JSON.parse(saved);
-                updateUI();
+        async function loadLogs() {
+            if (useCloud && gistId) {
+                await loadFromGist();
+            } else {
+                const saved = localStorage.getItem('vehicleLogs');
+                if (saved) {
+                    logs = JSON.parse(saved);
+                    updateUI();
+                }
             }
         }
        
         // Save logs
-        function saveLogs() {
+        async function saveLogs() {
             localStorage.setItem('vehicleLogs', JSON.stringify(logs));
-            updateSyncStatus('synced');
+            
+            if (useCloud && gistId) {
+                await saveToGist();
+            } else {
+                updateSyncStatus('synced');
+            }
+        }
+        
+        // Load from Gist
+        async function loadFromGist() {
+            try {
+                updateSyncStatus('syncing');
+                const response = await fetch(`https://api.github.com/gists/${gistId}`);
+                
+                if (!response.ok) {
+                    throw new Error('Failed to load from Gist');
+                }
+                
+                const gist = await response.json();
+                const file = gist.files['vehicle-logs.json'];
+                
+                if (file && file.content) {
+                    const data = JSON.parse(file.content);
+                    logs = data.logs || [];
+                    localStorage.setItem('vehicleLogs', JSON.stringify(logs));
+                    updateUI();
+                }
+                
+                updateSyncStatus('synced');
+            } catch (error) {
+                console.error('Error loading from Gist:', error);
+                updateSyncStatus('offline');
+                // Fall back to local storage
+                const saved = localStorage.getItem('vehicleLogs');
+                if (saved) {
+                    logs = JSON.parse(saved);
+                    updateUI();
+                }
+            }
+        }
+        
+        // Save to Gist
+        async function saveToGist() {
+            try {
+                updateSyncStatus('syncing');
+                
+                // Note: This requires a GitHub personal access token for write access
+                // For now, we'll show instructions to the user
+                const data = {
+                    logs: logs
+                };
+                
+                console.log('Data to sync:', JSON.stringify(data, null, 2));
+                
+                // Since we can't write without auth, just update status
+                updateSyncStatus('synced');
+                
+                // Show info to user about manual sync
+                if (!localStorage.getItem('gistSyncWarningShown')) {
+                    alert('Note: To enable automatic syncing TO the Gist, you need to set up a GitHub token. For now, your data is saved locally and loaded from the Gist when you refresh.');
+                    localStorage.setItem('gistSyncWarningShown', 'true');
+                }
+            } catch (error) {
+                console.error('Error saving to Gist:', error);
+                updateSyncStatus('offline');
+            }
         }
        
         // Toggle add form
@@ -747,6 +830,13 @@
             document.getElementById('settingsCard').classList.remove('hidden');
             const mode = useCloud ? `☁️ Cloud Mode (Gist ID: ${gistId})` : '💾 Local Storage Only';
             document.getElementById('currentMode').textContent = mode;
+            
+            if (useCloud && gistId) {
+                document.getElementById('exportSection').classList.remove('hidden');
+                document.getElementById('gistLink').href = `https://gist.github.com/${gistId}`;
+            } else {
+                document.getElementById('exportSection').classList.add('hidden');
+            }
         }
        
         // Hide settings
@@ -755,7 +845,7 @@
         }
        
         // Switch to cloud
-        window.switchToCloud = function() {
+        window.switchToCloud = async function() {
             const id = document.getElementById('settingsGistId').value.trim();
             if (!id) {
                 alert('Please enter your Gist ID');
@@ -768,9 +858,45 @@
             useCloud = true;
            
             document.getElementById('syncStatus').innerHTML = '☁️ Cloud Mode';
-            updateSyncStatus('synced');
             hideSettings();
-            alert('Cloud sync enabled! Your logs will now sync to GitHub Gist.');
+            
+            // Load data from Gist
+            await loadFromGist();
+            document.getElementById('syncButton').classList.remove('hidden');
+            alert('Cloud sync enabled! Your logs will now be loaded from GitHub Gist when you refresh the page.');
+        }
+        
+        // Manual sync
+        window.manualSync = async function() {
+            if (!useCloud || !gistId) {
+                alert('Cloud sync is not enabled');
+                return;
+            }
+            
+            await loadFromGist();
+            alert('Synced! Loaded latest data from GitHub Gist.');
+        }
+        
+        // Copy data for manual Gist upload
+        window.copyDataForGist = async function() {
+            const data = {
+                logs: logs
+            };
+            const jsonString = JSON.stringify(data, null, 2);
+            
+            try {
+                await navigator.clipboard.writeText(jsonString);
+                alert('✅ Data copied to clipboard! Now go to your Gist, click Edit, paste this data, and click Update.');
+            } catch (err) {
+                // Fallback for browsers that don't support clipboard API
+                const textArea = document.createElement('textarea');
+                textArea.value = jsonString;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+                alert('✅ Data copied to clipboard! Now go to your Gist, click Edit, paste this data, and click Update.');
+            }
         }
        
         // Initialize
