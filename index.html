@@ -325,8 +325,11 @@
     <div class="container">
         <!-- Setup Instructions -->
         <div id="setupCard" class="card">
-            <h2>⚙️ Automatic Cloud Sync Setup (5 Minutes)</h2>
-            <p style="margin-bottom: 16px;">Set up automatic syncing so your data stays perfectly in sync across all devices!</p>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <h2 style="margin: 0;">⚙️ Automatic Cloud Sync Setup</h2>
+                <button class="secondary small" onclick="openHelp()">❓ Help</button>
+            </div>
+            <p style="margin-bottom: 16px;">Set up automatic syncing so your data stays perfectly in sync across all devices! (5 minutes)</p>
            
             <div class="setup-section">
                 <strong>Step 1: Create a GitHub Gist</strong><br>
@@ -404,6 +407,59 @@
             </div>
         </div>
        
+        <!-- Help Modal -->
+        <div id="helpCard" class="card hidden">
+            <h2>❓ Help & Documentation</h2>
+            
+            <div style="margin-bottom: 20px;">
+                <h3 style="font-size: 1.1em; margin-bottom: 12px;">📚 Quick Start</h3>
+                <p style="font-size: 0.9em; color: #666; margin-bottom: 12px;">
+                    This app helps you track vehicle maintenance across all your family vehicles with automatic cloud syncing.
+                </p>
+            </div>
+            
+            <div style="margin-bottom: 20px;">
+                <h3 style="font-size: 1.1em; margin-bottom: 12px;">🚗 Adding a Log</h3>
+                <ol style="font-size: 0.9em; color: #666; padding-left: 20px;">
+                    <li>Click the "➕ Add Log" button</li>
+                    <li>Enter vehicle name, odometer reading, and notes</li>
+                    <li>Click "Save" - it syncs automatically!</li>
+                </ol>
+            </div>
+            
+            <div style="margin-bottom: 20px;">
+                <h3 style="font-size: 1.1em; margin-bottom: 12px;">🔄 Syncing</h3>
+                <p style="font-size: 0.9em; color: #666; margin-bottom: 8px;">
+                    <strong>Automatic Mode:</strong> If you entered a GitHub token, everything syncs automatically!
+                </p>
+                <ul style="font-size: 0.9em; color: #666; padding-left: 20px;">
+                    <li>Add logs → auto-uploads to cloud</li>
+                    <li>Open app → auto-loads latest data</li>
+                    <li>Click 🔄 Sync for manual refresh</li>
+                </ul>
+            </div>
+            
+            <div style="margin-bottom: 20px;">
+                <h3 style="font-size: 1.1em; margin-bottom: 12px;">👥 Sharing with Family</h3>
+                <p style="font-size: 0.9em; color: #666;">
+                    Share your Gist ID and GitHub Token with family members. When they enter the same credentials, 
+                    you'll all see the same vehicle logs!
+                </p>
+            </div>
+            
+            <div style="padding: 16px; background: #e3f2fd; border-radius: 8px; margin-bottom: 20px;">
+                <h3 style="font-size: 1.1em; margin-bottom: 12px;">📖 Full Documentation</h3>
+                <p style="font-size: 0.9em; color: #666; margin-bottom: 12px;">
+                    For complete setup instructions, troubleshooting, and advanced features:
+                </p>
+                <button onclick="openDocumentation()">📚 Open Setup Guide</button>
+            </div>
+            
+            <div class="button-group">
+                <button class="secondary" onclick="hideHelp()">Close</button>
+            </div>
+        </div>
+       
         <!-- Main App (hidden until setup) -->
         <div id="mainApp" class="hidden">
             <div class="card">
@@ -413,6 +469,7 @@
                         <span id="syncStatus" class="sync-status synced">✓ Local Mode</span>
                     </div>
                     <div style="display: flex; gap: 12px;">
+                        <button class="secondary small" onclick="openHelp()">❓ Help</button>
                         <button id="syncButton" class="secondary small hidden" onclick="manualSync()">🔄 Sync</button>
                         <button class="secondary small" onclick="showSettings()">⚙️ Settings</button>
                         <button id="addButton" onclick="toggleAddForm()">➕ Add Log</button>
@@ -955,6 +1012,24 @@
                 document.body.removeChild(textArea);
                 alert('✅ Data copied to clipboard! Now go to your Gist, click Edit, paste this data, and click Update.');
             }
+        }
+        
+        // Show help
+        window.openHelp = function() {
+            document.getElementById('helpCard').classList.remove('hidden');
+        }
+        
+        // Hide help
+        window.hideHelp = function() {
+            document.getElementById('helpCard').classList.add('hidden');
+        }
+        
+        // Open documentation
+        window.openDocumentation = function() {
+            // Try to open the GitHub repository documentation
+            // Users should replace YOUR-USERNAME with their actual username
+            const repoUrl = 'https://github.com/YOUR-USERNAME/vehicle-log/blob/main/SETUP_GUIDE.md';
+            window.open(repoUrl, '_blank');
         }
        
         // Initialize

@@ -1,0 +1,28 @@
+# 📝 Before Uploading to GitHub
+
+## Important: Update the Documentation Link
+
+In `index.html`, find this line (near the end of the file):
+
+```javascript
+const repoUrl = 'https://github.com/YOUR-USERNAME/vehicle-log/blob/main/SETUP_GUIDE.md';
+```
+
+**Replace `YOUR-USERNAME` with your actual GitHub username.**
+
+For example, if your GitHub username is `pauljones`, change it to:
+```javascript
+const repoUrl = 'https://github.com/pauljones/vehicle-log/blob/main/SETUP_GUIDE.md';
+```
+
+This makes the Help button link to your actual documentation!
+
+## Files to Upload
+
+Upload these files to your GitHub repository:
+
+✅ `index.html` - The main app with automatic sync
+✅ `SETUP_GUIDE.md` - Setup instructions
+✅ `README.md` - Full documentation (optional)
+✅ `USER_GUIDE.md` - Quick reference (optional)
+
