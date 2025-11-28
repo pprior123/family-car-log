@@ -926,6 +926,9 @@
                         </div>
                     </div>
                     ${log.notes ? `<div class="log-notes">${log.notes}</div>` : ''}
+                    <div style="margin-top: 12px; text-align: right;">
+                        <button class="small secondary" onclick="deleteLog('${log.id}')" style="background: #ffebee; color: #c62828;">🗑️ Delete</button>
+                    </div>
                 `;
                 logsList.appendChild(logDiv);
             });
@@ -1019,6 +1022,23 @@
                 document.execCommand('copy');
                 document.body.removeChild(textArea);
                 alert('✅ Data copied to clipboard! Now go to your Gist, click Edit, paste this data, and click Update.');
+            }
+        }
+        
+        // Delete log
+        window.deleteLog = function(logId) {
+            // Confirm deletion
+            if (!confirm('Are you sure you want to delete this log entry? This cannot be undone.')) {
+                return;
+            }
+            
+            // Find and remove the log
+            const index = logs.findIndex(log => log.id === logId);
+            if (index !== -1) {
+                logs.splice(index, 1);
+                saveLogs();
+                updateUI();
+                alert('✅ Log entry deleted successfully!');
             }
         }
         
