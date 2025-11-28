@@ -455,6 +455,14 @@
                 <button onclick="openDocumentation()">📚 Open Setup Guide</button>
             </div>
             
+            <div style="padding: 16px; background: #f3e5f5; border-radius: 8px; margin-bottom: 20px;">
+                <h3 style="font-size: 1.1em; margin-bottom: 12px;">💡 Request a Feature</h3>
+                <p style="font-size: 0.9em; color: #666; margin-bottom: 12px;">
+                    Have an idea to make this app better? We'd love to hear it!
+                </p>
+                <button onclick="openFeatureRequest()">✨ Request Feature</button>
+            </div>
+            
             <div class="button-group">
                 <button class="secondary" onclick="hideHelp()">Close</button>
             </div>
@@ -1026,10 +1034,14 @@
         
         // Open documentation
         window.openDocumentation = function() {
-            // Try to open the GitHub repository documentation
-            // Users should replace YOUR-USERNAME with their actual username
-            const repoUrl = 'https://github.com/YOUR-USERNAME/vehicle-log/blob/main/SETUP_GUIDE.md';
+            const repoUrl = 'https://github.com/pprior123/family-car-log/blob/main/SETUP_GUIDE.md';
             window.open(repoUrl, '_blank');
+        }
+        
+        // Open feature request
+        window.openFeatureRequest = function() {
+            const issuesUrl = 'https://github.com/pprior123/family-car-log/issues/new';
+            window.open(issuesUrl, '_blank');
         }
        
         // Initialize
