@@ -80,10 +80,26 @@ They follow the same setup steps, and you'll all share the same vehicle logs!
 1. Click **➕ Add Log** button
 2. Fill in:
    - **Vehicle Name** (e.g., "Honda Civic", "Toyota Camry")
+   - **Date** - Defaults to today, but you can select any past date to backfill records!
    - **Current Odometer** reading in km
    - **Category** (maintenance, fuel, tires, repair, inspection, other)
    - **Notes** (what was done - optional)
 3. Click **Save Log Entry**
+
+### Deleting a Log Entry
+
+1. Find the log you want to remove
+2. Click the **🗑️ Delete** button at the bottom of the entry
+3. Confirm when prompted
+4. Entry is deleted and automatically synced
+
+### Adding Historical Records
+
+You can add maintenance records from the past:
+1. Click **➕ Add Log**
+2. **Change the date** to when the service actually occurred
+3. Fill in the details as normal
+4. Logs automatically sort chronologically
 
 ### Filtering by Vehicle
 
@@ -271,6 +287,13 @@ Potential features for future versions:
 
 ---
 
-**Last Updated**: November 2024  
-**Version**: 1.0
+**Last Updated**: December 2025  
+**Version**: 2.0
+
+### Recent Updates (v2.0)
+- ✨ Added automatic cloud syncing with GitHub tokens
+- 📅 Added date picker for log entries (backfill historical records!)
+- 🗑️ Added delete functionality for log entries
+- ❓ Added in-app help documentation
+- 💡 Added feature request button linked to GitHub Issues
 

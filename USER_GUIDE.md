@@ -25,14 +25,29 @@
 1. Click **➕ Add Log**
 2. Enter:
    - Vehicle name
+   - **Date** (defaults to today, change for past records)
    - Current odometer (km)
+   - Category (maintenance, fuel, tires, etc.)
    - What was done (optional notes)
 3. Click **Save**
+
+### Deleting a Log
+1. Find the log entry
+2. Click **🗑️ Delete** at the bottom
+3. Confirm deletion
+4. Done - it syncs automatically!
 
 ### Viewing Logs
 - Use dropdown to filter by vehicle
 - See all maintenance history
 - View statistics when filtering
+
+### Adding Old Records
+Need to log something from last week?
+1. Click **➕ Add Log**
+2. **Change the date** to when it happened
+3. Fill in details and save
+4. Logs automatically sort by date!
 
 
 ## Syncing Between Devices

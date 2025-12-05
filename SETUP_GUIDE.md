@@ -94,3 +94,36 @@ The GitHub token allows access to your Gist. Only share it with trusted family m
 - Enter new Gist ID and Token
 - Click "Enable Automatic Sync"
 
+
+
+## 📝 Daily Use
+
+### Adding a Log Entry
+1. Click **➕ Add Log**
+2. Fill in:
+   - **Vehicle Name**: e.g., "Honda Civic"
+   - **Date**: Defaults to today, but you can select any past date!
+   - **Odometer**: Current reading in km
+   - **Category**: Maintenance, fuel, tires, repair, etc.
+   - **Notes**: What was done (optional)
+3. Click **Save Log Entry**
+
+### Deleting a Log Entry
+1. Find the log entry you want to delete
+2. Click the **🗑️ Delete** button at the bottom of the entry
+3. Confirm the deletion when prompted
+4. The entry is removed and automatically syncs!
+
+### Viewing Your Logs
+- Use the **"Filter by Vehicle"** dropdown to see logs for specific vehicles
+- View statistics when filtering by vehicle
+- All logs are sorted by date (newest first)
+
+### Adding Historical Records
+Want to add old maintenance records you did in the past?
+1. Click **➕ Add Log**
+2. **Change the date** to when the service actually happened
+3. Fill in the details as normal
+4. Click Save
+5. The log will appear in chronological order automatically!
+
