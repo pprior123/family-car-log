@@ -502,6 +502,11 @@
                 </div>
                
                 <div class="form-group">
+                    <label>Date *</label>
+                    <input type="date" id="logDate">
+                </div>
+               
+                <div class="form-group">
                     <label>Current Odometer (km) *</label>
                     <input type="number" id="odometer" placeholder="e.g., 45000">
                 </div>
@@ -737,6 +742,9 @@
             form.classList.toggle('hidden');
            
             if (!form.classList.contains('hidden')) {
+                // Set today's date as default
+                const today = new Date().toISOString().split('T')[0];
+                document.getElementById('logDate').value = today;
                 document.getElementById('vehicleName').focus();
             }
         }
@@ -747,6 +755,7 @@
             const odometer = parseInt(document.getElementById('odometer').value);
             const category = document.getElementById('category').value;
             const notes = document.getElementById('notes').value.trim();
+            const logDateInput = document.getElementById('logDate').value;
            
             if (!vehicle) {
                 alert('Please enter a vehicle name');
@@ -757,17 +766,26 @@
                 alert('Please enter a valid odometer reading');
                 return;
             }
+            
+            if (!logDateInput) {
+                alert('Please select a date');
+                return;
+            }
            
+            // Use the selected date, but set time to current time
+            const selectedDate = new Date(logDateInput + 'T00:00:00');
             const now = new Date();
+            selectedDate.setHours(now.getHours(), now.getMinutes(), now.getSeconds());
+            
             const log = {
                 id: Date.now() + Math.random().toString(36).substr(2, 9),
                 vehicle: vehicle,
                 odometer: odometer,
                 category: category,
                 notes: notes,
-                date: now.toISOString(),
-                displayDate: now.toLocaleDateString(),
-                displayTime: now.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})
+                date: selectedDate.toISOString(),
+                displayDate: selectedDate.toLocaleDateString(),
+                displayTime: selectedDate.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})
             };
            
             logs.push(log);
@@ -778,6 +796,10 @@
             document.getElementById('vehicleName').value = vehicle;
             document.getElementById('odometer').value = '';
             document.getElementById('notes').value = '';
+            document.getElementById('category').value = 'maintenance';
+            // Reset date to today
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('logDate').value = today;
             document.getElementById('category').value = 'maintenance';
            
             toggleAddForm();
