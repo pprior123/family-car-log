@@ -86,6 +86,15 @@ They follow the same setup steps, and you'll all share the same vehicle logs!
    - **Notes** (what was done - optional)
 3. Click **Save Log Entry**
 
+### Editing a Log Entry
+
+1. Find the log you want to edit
+2. Click the **✏️ Edit** button
+3. Confirm when prompted
+4. Update any field (vehicle, date, odometer, category, notes)
+5. Click **Save Changes**
+6. Edited entries show "Last edited" timestamp
+
 ### Deleting a Log Entry
 
 1. Find the log you want to remove
@@ -288,9 +297,10 @@ Potential features for future versions:
 ---
 
 **Last Updated**: December 2025  
-**Version**: 2.0
+**Version**: 2.1
 
-### Recent Updates (v2.0)
+### Recent Updates (v2.1)
+- ✏️ Added edit functionality for log entries with "Last edited" timestamp
 - ✨ Added automatic cloud syncing with GitHub tokens
 - 📅 Added date picker for log entries (backfill historical records!)
 - 🗑️ Added delete functionality for log entries

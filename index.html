@@ -422,8 +422,35 @@
                 <h3 style="font-size: 1.1em; margin-bottom: 12px;">🚗 Adding a Log</h3>
                 <ol style="font-size: 0.9em; color: #666; padding-left: 20px;">
                     <li>Click the "➕ Add Log" button</li>
-                    <li>Enter vehicle name, odometer reading, and notes</li>
+                    <li>Enter vehicle name, <strong>date</strong> (defaults to today), and odometer</li>
+                    <li>Add notes about what was done</li>
                     <li>Click "Save" - it syncs automatically!</li>
+                </ol>
+                <p style="font-size: 0.85em; color: #666; margin-top: 8px; font-style: italic;">
+                    💡 Tip: Change the date to add historical records from the past!
+                </p>
+            </div>
+            
+            <div style="margin-bottom: 20px;">
+                <h3 style="font-size: 1.1em; margin-bottom: 12px;">✏️ Editing a Log</h3>
+                <ol style="font-size: 0.9em; color: #666; padding-left: 20px;">
+                    <li>Find the log entry you want to edit</li>
+                    <li>Click the "✏️ Edit" button</li>
+                    <li>Confirm that you want to edit</li>
+                    <li>Make your changes and click "Save Changes"</li>
+                </ol>
+                <p style="font-size: 0.85em; color: #666; margin-top: 8px; font-style: italic;">
+                    📝 Note: Edited entries show "Last edited" timestamp at the bottom.
+                </p>
+            </div>
+            
+            <div style="margin-bottom: 20px;">
+                <h3 style="font-size: 1.1em; margin-bottom: 12px;">🗑️ Deleting a Log</h3>
+                <ol style="font-size: 0.9em; color: #666; padding-left: 20px;">
+                    <li>Find the log entry you want to remove</li>
+                    <li>Click the "🗑️ Delete" button at the bottom</li>
+                    <li>Confirm the deletion</li>
+                    <li>Entry is removed and synced automatically!</li>
                 </ol>
             </div>
             
@@ -434,6 +461,8 @@
                 </p>
                 <ul style="font-size: 0.9em; color: #666; padding-left: 20px;">
                     <li>Add logs → auto-uploads to cloud</li>
+                    <li>Edit logs → auto-syncs changes</li>
+                    <li>Delete logs → auto-syncs changes</li>
                     <li>Open app → auto-loads latest data</li>
                     <li>Click 🔄 Sync for manual refresh</li>
                 </ul>
@@ -534,6 +563,47 @@
                 </div>
             </div>
            
+            <div id="editForm" class="card hidden">
+                <h2>Edit Log Entry</h2>
+               
+                <div class="form-group">
+                    <label>Vehicle Name *</label>
+                    <input type="text" id="editVehicleName" placeholder="e.g., Honda Civic, Toyota Camry" list="vehicleList">
+                </div>
+               
+                <div class="form-group">
+                    <label>Date *</label>
+                    <input type="date" id="editLogDate">
+                </div>
+               
+                <div class="form-group">
+                    <label>Current Odometer (km) *</label>
+                    <input type="number" id="editOdometer" placeholder="e.g., 45000">
+                </div>
+               
+                <div class="form-group">
+                    <label>Category</label>
+                    <select id="editCategory">
+                        <option value="maintenance">Maintenance</option>
+                        <option value="fuel">Fuel</option>
+                        <option value="tires">Tires</option>
+                        <option value="repair">Repair</option>
+                        <option value="inspection">Inspection</option>
+                        <option value="other">Other</option>
+                    </select>
+                </div>
+               
+                <div class="form-group">
+                    <label>Notes</label>
+                    <textarea id="editNotes" rows="3" placeholder="e.g., Changed oil, Rotated tires, Installed new tires"></textarea>
+                </div>
+               
+                <div class="button-group">
+                    <button onclick="saveEdit()">Save Changes</button>
+                    <button class="secondary" onclick="cancelEdit()">Cancel</button>
+                </div>
+            </div>
+           
             <div id="statsCard" class="card hidden"></div>
            
             <div class="card">
@@ -557,6 +627,7 @@
         let gistId = null;
         let githubToken = null;
         let useCloud = false;
+        let editingLogId = null;
        
         // Check if already configured
         async function init() {
@@ -948,7 +1019,9 @@
                         </div>
                     </div>
                     ${log.notes ? `<div class="log-notes">${log.notes}</div>` : ''}
-                    <div style="margin-top: 12px; text-align: right;">
+                    ${log.lastEdited ? `<div style="font-size: 0.8em; color: #999; margin-top: 8px; font-style: italic;">Last edited: ${log.lastEditedDisplay}</div>` : ''}
+                    <div style="margin-top: 12px; text-align: right; display: flex; gap: 8px; justify-content: flex-end;">
+                        <button class="small secondary" onclick="editLog('${log.id}')" style="background: #e3f2fd; color: #1565c0;">✏️ Edit</button>
                         <button class="small secondary" onclick="deleteLog('${log.id}')" style="background: #ffebee; color: #c62828;">🗑️ Delete</button>
                     </div>
                 `;
@@ -1062,6 +1135,99 @@
                 updateUI();
                 alert('✅ Log entry deleted successfully!');
             }
+        }
+        
+        // Edit log
+        window.editLog = function(logId) {
+            // Confirm edit
+            if (!confirm('Edit this log entry? You can modify any field.')) {
+                return;
+            }
+            
+            // Find the log
+            const log = logs.find(l => l.id === logId);
+            if (!log) return;
+            
+            // Store which log we're editing
+            editingLogId = logId;
+            
+            // Populate the edit form
+            document.getElementById('editVehicleName').value = log.vehicle;
+            document.getElementById('editOdometer').value = log.odometer;
+            document.getElementById('editCategory').value = log.category;
+            document.getElementById('editNotes').value = log.notes || '';
+            
+            // Set the date (convert from ISO to YYYY-MM-DD format)
+            const logDate = new Date(log.date);
+            document.getElementById('editLogDate').value = logDate.toISOString().split('T')[0];
+            
+            // Hide add form if open, show edit form
+            document.getElementById('addForm').classList.add('hidden');
+            document.getElementById('editForm').classList.remove('hidden');
+            
+            // Scroll to form
+            document.getElementById('editForm').scrollIntoView({ behavior: 'smooth' });
+        }
+        
+        // Save edit
+        window.saveEdit = function() {
+            const vehicle = document.getElementById('editVehicleName').value.trim();
+            const odometer = parseInt(document.getElementById('editOdometer').value);
+            const category = document.getElementById('editCategory').value;
+            const notes = document.getElementById('editNotes').value.trim();
+            const logDateInput = document.getElementById('editLogDate').value;
+            
+            if (!vehicle) {
+                alert('Please enter a vehicle name');
+                return;
+            }
+            
+            if (!odometer || odometer <= 0) {
+                alert('Please enter a valid odometer reading');
+                return;
+            }
+            
+            if (!logDateInput) {
+                alert('Please select a date');
+                return;
+            }
+            
+            // Find the log being edited
+            const logIndex = logs.findIndex(l => l.id === editingLogId);
+            if (logIndex === -1) return;
+            
+            // Use the selected date
+            const selectedDate = new Date(logDateInput + 'T00:00:00');
+            const now = new Date();
+            selectedDate.setHours(now.getHours(), now.getMinutes(), now.getSeconds());
+            
+            // Update the log
+            logs[logIndex].vehicle = vehicle;
+            logs[logIndex].odometer = odometer;
+            logs[logIndex].category = category;
+            logs[logIndex].notes = notes;
+            logs[logIndex].date = selectedDate.toISOString();
+            logs[logIndex].displayDate = selectedDate.toLocaleDateString();
+            logs[logIndex].displayTime = selectedDate.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+            
+            // Add last edited timestamp
+            const editTime = new Date();
+            logs[logIndex].lastEdited = editTime.toISOString();
+            logs[logIndex].lastEditedDisplay = editTime.toLocaleDateString() + ' at ' + editTime.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+            
+            // Re-sort logs by date
+            logs.sort((a, b) => new Date(b.date) - new Date(a.date));
+            
+            saveLogs();
+            cancelEdit();
+            updateUI();
+            alert('✅ Log entry updated successfully!');
+        }
+        
+        // Cancel edit
+        window.cancelEdit = function() {
+            document.getElementById('editForm').classList.add('hidden');
+            editingLogId = null;
         }
         
         // Show help

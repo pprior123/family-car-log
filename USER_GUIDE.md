@@ -31,6 +31,13 @@
    - What was done (optional notes)
 3. Click **Save**
 
+### Editing a Log
+1. Find the log entry
+2. Click **✏️ Edit**
+3. Confirm editing
+4. Make changes and click **Save Changes**
+5. Edited entries show "Last edited" timestamp
+
 ### Deleting a Log
 1. Find the log entry
 2. Click **🗑️ Delete** at the bottom

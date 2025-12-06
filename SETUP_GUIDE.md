@@ -108,6 +108,14 @@ The GitHub token allows access to your Gist. Only share it with trusted family m
    - **Notes**: What was done (optional)
 3. Click **Save Log Entry**
 
+### Editing a Log Entry
+1. Find the log entry you want to edit
+2. Click the **✏️ Edit** button
+3. Confirm when prompted
+4. Make your changes in the edit form
+5. Click **Save Changes**
+6. The entry shows "Last edited" timestamp
+
 ### Deleting a Log Entry
 1. Find the log entry you want to delete
 2. Click the **🗑️ Delete** button at the bottom of the entry
