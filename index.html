@@ -588,7 +588,7 @@
                
                 <div class="form-group">
                     <label>Category</label>
-                    <select id="category">
+                    <select id="category" onchange="toggleTireFields()">
                         <option value="maintenance">Maintenance</option>
                         <option value="fuel">Fuel</option>
                         <option value="tires">Tires</option>
@@ -596,6 +596,27 @@
                         <option value="inspection">Inspection</option>
                         <option value="other">Other</option>
                     </select>
+                </div>
+                
+                <div id="tireFields" class="hidden">
+                    <div class="form-group">
+                        <label>Tire Set</label>
+                        <select id="tireSet">
+                            <option value="summer">Summer Tires</option>
+                            <option value="winter">Winter Tires</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Tire Action</label>
+                        <select id="tireAction">
+                            <option value="seasonal_change">Seasonal Change (switching sets)</option>
+                            <option value="new_tires">New Tires Installed</option>
+                            <option value="rotation">Tire Rotation</option>
+                            <option value="repair">Tire Repair</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </div>
                 </div>
                
                 <div class="form-group">
@@ -629,7 +650,7 @@
                
                 <div class="form-group">
                     <label>Category</label>
-                    <select id="editCategory">
+                    <select id="editCategory" onchange="toggleEditTireFields()">
                         <option value="maintenance">Maintenance</option>
                         <option value="fuel">Fuel</option>
                         <option value="tires">Tires</option>
@@ -637,6 +658,27 @@
                         <option value="inspection">Inspection</option>
                         <option value="other">Other</option>
                     </select>
+                </div>
+                
+                <div id="editTireFields" class="hidden">
+                    <div class="form-group">
+                        <label>Tire Set</label>
+                        <select id="editTireSet">
+                            <option value="summer">Summer Tires</option>
+                            <option value="winter">Winter Tires</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Tire Action</label>
+                        <select id="editTireAction">
+                            <option value="seasonal_change">Seasonal Change (switching sets)</option>
+                            <option value="new_tires">New Tires Installed</option>
+                            <option value="rotation">Tire Rotation</option>
+                            <option value="repair">Tire Repair</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </div>
                 </div>
                
                 <div class="form-group">
@@ -865,6 +907,30 @@
                 document.getElementById('vehicleName').focus();
             }
         }
+        
+        // Toggle tire fields in add form
+        window.toggleTireFields = function() {
+            const category = document.getElementById('category').value;
+            const tireFields = document.getElementById('tireFields');
+            
+            if (category === 'tires') {
+                tireFields.classList.remove('hidden');
+            } else {
+                tireFields.classList.add('hidden');
+            }
+        }
+        
+        // Toggle tire fields in edit form
+        window.toggleEditTireFields = function() {
+            const category = document.getElementById('editCategory').value;
+            const tireFields = document.getElementById('editTireFields');
+            
+            if (category === 'tires') {
+                tireFields.classList.remove('hidden');
+            } else {
+                tireFields.classList.add('hidden');
+            }
+        }
        
         // Save a new log
         window.saveLog = function() {
@@ -904,6 +970,12 @@
                 displayDate: selectedDate.toLocaleDateString(),
                 displayTime: selectedDate.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})
             };
+            
+            // Add tire-specific fields if category is tires
+            if (category === 'tires') {
+                log.tireSet = document.getElementById('tireSet').value;
+                log.tireAction = document.getElementById('tireAction').value;
+            }
            
             logs.push(log);
             logs.sort((a, b) => new Date(b.date) - new Date(a.date));
@@ -914,6 +986,7 @@
             document.getElementById('odometer').value = '';
             document.getElementById('notes').value = '';
             document.getElementById('category').value = 'maintenance';
+            document.getElementById('tireFields').classList.add('hidden');
             // Reset date to today
             const today = new Date().toISOString().split('T')[0];
             document.getElementById('logDate').value = today;
@@ -1065,6 +1138,9 @@
                         </div>
                     </div>
                     ${log.notes ? `<div class="log-notes">${log.notes}</div>` : ''}
+                    ${log.category === 'tires' && log.tireSet && log.tireAction ? `<div style="margin-top: 8px; padding: 8px; background: #fff3e0; border-radius: 4px; font-size: 0.9em;">
+                        <strong>🔧 Tire Service:</strong> ${log.tireSet === 'summer' ? '☀️ Summer' : '❄️ Winter'} Tires - ${log.tireAction.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                    </div>` : ''}
                     ${log.lastEdited ? `<div style="font-size: 0.8em; color: #999; margin-top: 8px; font-style: italic;">Last edited: ${log.lastEditedDisplay}</div>` : ''}
                     <div style="margin-top: 12px; text-align: right; display: flex; gap: 8px; justify-content: flex-end;">
                         <button class="small secondary" onclick="editLog('${log.id}')" style="background: #e3f2fd; color: #1565c0;">✏️ Edit</button>
@@ -1207,6 +1283,15 @@
             const logDate = new Date(log.date);
             document.getElementById('editLogDate').value = logDate.toISOString().split('T')[0];
             
+            // Show/populate tire fields if this is a tire log
+            if (log.category === 'tires') {
+                document.getElementById('editTireFields').classList.remove('hidden');
+                if (log.tireSet) document.getElementById('editTireSet').value = log.tireSet;
+                if (log.tireAction) document.getElementById('editTireAction').value = log.tireAction;
+            } else {
+                document.getElementById('editTireFields').classList.add('hidden');
+            }
+            
             // Hide add form if open, show edit form
             document.getElementById('addForm').classList.add('hidden');
             document.getElementById('editForm').classList.remove('hidden');
@@ -1255,6 +1340,16 @@
             logs[logIndex].date = selectedDate.toISOString();
             logs[logIndex].displayDate = selectedDate.toLocaleDateString();
             logs[logIndex].displayTime = selectedDate.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+            
+            // Update tire-specific fields if category is tires
+            if (category === 'tires') {
+                logs[logIndex].tireSet = document.getElementById('editTireSet').value;
+                logs[logIndex].tireAction = document.getElementById('editTireAction').value;
+            } else {
+                // Remove tire fields if category changed from tires to something else
+                delete logs[logIndex].tireSet;
+                delete logs[logIndex].tireAction;
+            }
             
             // Add last edited timestamp
             const editTime = new Date();
@@ -1356,6 +1451,56 @@
             const daysTracked = Math.floor((new Date(vehicleLogs[vehicleLogs.length - 1].date) - new Date(vehicleLogs[0].date)) / (1000 * 60 * 60 * 24));
             const avgPerDay = daysTracked > 0 ? (totalDistance / daysTracked).toFixed(1) : 0;
             
+            // Calculate tire tracking
+            const tireLogs = vehicleLogs.filter(log => log.category === 'tires' && log.tireSet && log.tireAction);
+            let tireTrackingHTML = '';
+            
+            if (tireLogs.length > 0) {
+                // Find last "new_tires" for each tire set
+                const summerTireLogs = tireLogs.filter(log => log.tireSet === 'summer');
+                const winterTireLogs = tireLogs.filter(log => log.tireSet === 'winter');
+                
+                const lastSummerNew = summerTireLogs.reverse().find(log => log.tireAction === 'new_tires');
+                const lastWinterNew = winterTireLogs.reverse().find(log => log.tireAction === 'new_tires');
+                
+                const currentOdometer = vehicleLogs[vehicleLogs.length - 1].odometer;
+                
+                let summerKm = 'No data';
+                let winterKm = 'No data';
+                
+                if (lastSummerNew) {
+                    summerKm = (currentOdometer - lastSummerNew.odometer).toLocaleString() + ' km';
+                }
+                
+                if (lastWinterNew) {
+                    winterKm = (currentOdometer - lastWinterNew.odometer).toLocaleString() + ' km';
+                }
+                
+                // Find currently installed tires
+                const lastSeasonalChange = tireLogs.filter(log => log.tireAction === 'seasonal_change').reverse()[0];
+                const currentTires = lastSeasonalChange ? (lastSeasonalChange.tireSet === 'summer' ? 'Summer' : 'Winter') : 'Unknown';
+                
+                tireTrackingHTML = `
+                    <div style="padding: 16px; background: #fff3e0; border-radius: 8px; margin-top: 20px;">
+                        <h3 style="font-size: 1em; margin-bottom: 8px;">🔧 Tire Tracking</h3>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-top: 12px;">
+                            <div>
+                                <div style="font-size: 0.85em; color: #666;">Currently Installed</div>
+                                <div style="font-size: 1.2em; font-weight: bold; color: #e65100;">${currentTires} Tires</div>
+                            </div>
+                            <div>
+                                <div style="font-size: 0.85em; color: #666;">Summer Tires</div>
+                                <div style="font-size: 1.2em; font-weight: bold; color: #f57c00;">${summerKm}</div>
+                            </div>
+                            <div>
+                                <div style="font-size: 0.85em; color: #666;">Winter Tires</div>
+                                <div style="font-size: 1.2em; font-weight: bold; color: #1976d2;">${winterKm}</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+            
             // Update stats
             document.getElementById('analysisStats').innerHTML = `
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px;">
@@ -1376,6 +1521,7 @@
                         <div style="font-size: 1.3em; font-weight: bold; color: #7b1fa2;">${avgPerDay} km</div>
                     </div>
                 </div>
+                ${tireTrackingHTML}
             `;
             
             // Destroy old chart if exists
