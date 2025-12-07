@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Family Vehicle Log</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -469,6 +470,18 @@
             </div>
             
             <div style="margin-bottom: 20px;">
+                <h3 style="font-size: 1.1em; margin-bottom: 12px;">📊 Analysis Mode</h3>
+                <ol style="font-size: 0.9em; color: #666; padding-left: 20px;">
+                    <li>Click the "📊 Analysis" button in the header</li>
+                    <li>Select a vehicle from the dropdown</li>
+                    <li>View odometer progress chart and statistics</li>
+                </ol>
+                <p style="font-size: 0.85em; color: #666; margin-top: 8px; font-style: italic;">
+                    📈 See driving patterns, plan service intervals, and understand vehicle usage!
+                </p>
+            </div>
+            
+            <div style="margin-bottom: 20px;">
                 <h3 style="font-size: 1.1em; margin-bottom: 12px;">👥 Sharing with Family</h3>
                 <p style="font-size: 0.9em; color: #666;">
                     Share your Gist ID and GitHub Token with family members. When they enter the same credentials, 
@@ -497,6 +510,38 @@
             </div>
         </div>
        
+        <!-- Analysis Modal -->
+        <div id="analysisCard" class="card hidden">
+            <h2>📊 Vehicle Analysis</h2>
+            
+            <div class="form-group">
+                <label>Select Vehicle for Analysis</label>
+                <select id="analysisVehicleFilter" onchange="updateAnalysis()">
+                    <option value="">-- Select a vehicle --</option>
+                </select>
+            </div>
+            
+            <div id="analysisContent" style="display: none;">
+                <div style="margin-bottom: 20px;">
+                    <h3 style="font-size: 1.1em; margin-bottom: 12px;">📈 Odometer Progress Over Time</h3>
+                    <canvas id="odometerChart" style="max-height: 400px;"></canvas>
+                </div>
+                
+                <div style="padding: 16px; background: #e8f5e9; border-radius: 8px; margin-top: 20px;">
+                    <h3 style="font-size: 1em; margin-bottom: 8px;">📊 Quick Stats</h3>
+                    <div id="analysisStats"></div>
+                </div>
+            </div>
+            
+            <div id="noAnalysisData" style="text-align: center; padding: 40px; color: #999;">
+                <p>Select a vehicle above to view analysis</p>
+            </div>
+            
+            <div class="button-group" style="margin-top: 20px;">
+                <button class="secondary" onclick="hideAnalysis()">Close</button>
+            </div>
+        </div>
+       
         <!-- Main App (hidden until setup) -->
         <div id="mainApp" class="hidden">
             <div class="card">
@@ -506,6 +551,7 @@
                         <span id="syncStatus" class="sync-status synced">✓ Local Mode</span>
                     </div>
                     <div style="display: flex; gap: 12px;">
+                        <button class="secondary small" onclick="openAnalysis()">📊 Analysis</button>
                         <button class="secondary small" onclick="openHelp()">❓ Help</button>
                         <button id="syncButton" class="secondary small hidden" onclick="manualSync()">🔄 Sync</button>
                         <button class="secondary small" onclick="showSettings()">⚙️ Settings</button>
@@ -1250,6 +1296,156 @@
         window.openFeatureRequest = function() {
             const issuesUrl = 'https://github.com/pprior123/family-car-log/issues/new';
             window.open(issuesUrl, '_blank');
+        }
+        
+        // Analysis mode
+        let analysisChart = null;
+        
+        // Open analysis
+        window.openAnalysis = function() {
+            document.getElementById('analysisCard').classList.remove('hidden');
+            
+            // Populate vehicle dropdown
+            const vehicles = getVehicles();
+            const select = document.getElementById('analysisVehicleFilter');
+            select.innerHTML = '<option value="">-- Select a vehicle --</option>';
+            vehicles.forEach(vehicle => {
+                select.innerHTML += `<option value="${vehicle}">${vehicle}</option>`;
+            });
+        }
+        
+        // Hide analysis
+        window.hideAnalysis = function() {
+            document.getElementById('analysisCard').classList.add('hidden');
+            if (analysisChart) {
+                analysisChart.destroy();
+                analysisChart = null;
+            }
+        }
+        
+        // Update analysis
+        window.updateAnalysis = function() {
+            const vehicle = document.getElementById('analysisVehicleFilter').value;
+            
+            if (!vehicle) {
+                document.getElementById('analysisContent').style.display = 'none';
+                document.getElementById('noAnalysisData').style.display = 'block';
+                return;
+            }
+            
+            // Get logs for this vehicle
+            const vehicleLogs = logs.filter(log => log.vehicle === vehicle)
+                .sort((a, b) => new Date(a.date) - new Date(b.date)); // Sort chronologically
+            
+            if (vehicleLogs.length === 0) {
+                document.getElementById('analysisContent').style.display = 'none';
+                document.getElementById('noAnalysisData').style.display = 'block';
+                return;
+            }
+            
+            document.getElementById('analysisContent').style.display = 'block';
+            document.getElementById('noAnalysisData').style.display = 'none';
+            
+            // Prepare data for chart
+            const dates = vehicleLogs.map(log => log.displayDate);
+            const odometers = vehicleLogs.map(log => log.odometer);
+            
+            // Calculate stats
+            const totalDistance = odometers[odometers.length - 1] - odometers[0];
+            const avgPerLog = totalDistance / (vehicleLogs.length - 1);
+            const daysTracked = Math.floor((new Date(vehicleLogs[vehicleLogs.length - 1].date) - new Date(vehicleLogs[0].date)) / (1000 * 60 * 60 * 24));
+            const avgPerDay = daysTracked > 0 ? (totalDistance / daysTracked).toFixed(1) : 0;
+            
+            // Update stats
+            document.getElementById('analysisStats').innerHTML = `
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px;">
+                    <div>
+                        <div style="font-size: 0.85em; color: #666;">Total Distance</div>
+                        <div style="font-size: 1.3em; font-weight: bold; color: #2e7d32;">${totalDistance.toLocaleString()} km</div>
+                    </div>
+                    <div>
+                        <div style="font-size: 0.85em; color: #666;">Avg per Service</div>
+                        <div style="font-size: 1.3em; font-weight: bold; color: #1565c0;">${avgPerLog.toFixed(0)} km</div>
+                    </div>
+                    <div>
+                        <div style="font-size: 0.85em; color: #666;">Days Tracked</div>
+                        <div style="font-size: 1.3em; font-weight: bold; color: #f57c00;">${daysTracked}</div>
+                    </div>
+                    <div>
+                        <div style="font-size: 0.85em; color: #666;">Avg per Day</div>
+                        <div style="font-size: 1.3em; font-weight: bold; color: #7b1fa2;">${avgPerDay} km</div>
+                    </div>
+                </div>
+            `;
+            
+            // Destroy old chart if exists
+            if (analysisChart) {
+                analysisChart.destroy();
+            }
+            
+            // Create chart
+            const ctx = document.getElementById('odometerChart').getContext('2d');
+            analysisChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: dates,
+                    datasets: [{
+                        label: 'Odometer (km)',
+                        data: odometers,
+                        borderColor: '#667eea',
+                        backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                        borderWidth: 3,
+                        tension: 0.1,
+                        fill: true,
+                        pointRadius: 5,
+                        pointHoverRadius: 7,
+                        pointBackgroundColor: '#667eea',
+                        pointBorderColor: '#fff',
+                        pointBorderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: vehicle + ' - Odometer Progress',
+                            font: { size: 16, weight: 'bold' }
+                        },
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return context.parsed.y.toLocaleString() + ' km';
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: false,
+                            ticks: {
+                                callback: function(value) {
+                                    return value.toLocaleString() + ' km';
+                                }
+                            },
+                            title: {
+                                display: true,
+                                text: 'Odometer (km)'
+                            }
+                        },
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Date'
+                            }
+                        }
+                    }
+                }
+            });
         }
        
         // Initialize

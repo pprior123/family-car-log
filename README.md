@@ -124,6 +124,26 @@ When filtering by a specific vehicle, you'll see:
 - **Distance Tracked** - Total km between first and last log
 - **First Log Date** - When you started tracking this vehicle
 
+### Using Analysis Mode
+
+Access detailed analytics and visualizations:
+
+1. Click **📊 Analysis** button in the header
+2. Select a vehicle from the dropdown
+3. View:
+   - **Odometer Progress Chart** - Line graph showing odometer over time
+   - **Quick Stats**:
+     - Total Distance - km driven during tracking period
+     - Average per Service - typical distance between maintenance
+     - Days Tracked - how long you've been tracking
+     - Average per Day - estimated daily driving
+
+**Perfect for:**
+- Tracking driving patterns
+- Planning service intervals
+- Understanding vehicle usage
+- Identifying trends over time
+
 
 ## 🔄 Syncing Between Devices
 
@@ -297,9 +317,10 @@ Potential features for future versions:
 ---
 
 **Last Updated**: December 2025  
-**Version**: 2.1
+**Version**: 2.2
 
-### Recent Updates (v2.1)
+### Recent Updates (v2.2)
+- 📊 Added Analysis Mode with odometer vs date chart and driving statistics
 - ✏️ Added edit functionality for log entries with "Last edited" timestamp
 - ✨ Added automatic cloud syncing with GitHub tokens
 - 📅 Added date picker for log entries (backfill historical records!)
