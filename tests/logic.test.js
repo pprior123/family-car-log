@@ -369,3 +369,136 @@ test('chart: a single point still gets a sensible axis', () => {
     const x = L.buildOdometerChartConfig(a).options.scales.x;
     assert.ok(x.max > x.min);
 });
+
+// ---- receipts --------------------------------------------------------------
+
+const SAMPLE_RECEIPT = `JIFFY LUBE #1234
+123 Main St, Toronto ON
+Date: 2026-10-12   Time: 14:05
+Odometer In: 61,250 km
+Oil change - synthetic        79.99
+Cabin air filter              24.99
+Subtotal                     104.98
+HST 13%                       13.65
+TOTAL                       $118.63
+Thank you!`;
+
+test('receipt: parses date, odometer and total from a typical receipt', () => {
+    assert.deepEqual(L.parseReceiptText(SAMPLE_RECEIPT), {
+        date: '2026-10-12',
+        odometer: 61250,
+        total: '118.63'
+    });
+});
+
+test('receipt date: ISO, month names, and unambiguous numeric formats', () => {
+    assert.equal(L.parseReceiptDate('Invoice 2026/03/04'), '2026-03-04');
+    assert.equal(L.parseReceiptDate('Oct 25, 2026 9:30pm'), '2026-10-25');
+    assert.equal(L.parseReceiptDate('October 5th 2026'), '2026-10-05');
+    assert.equal(L.parseReceiptDate('25 Oct 2026'), '2026-10-25');
+    assert.equal(L.parseReceiptDate('25/10/2026'), '2026-10-25'); // 25 can't be a month
+    assert.equal(L.parseReceiptDate('10/25/2026'), '2026-10-25');
+    assert.equal(L.parseReceiptDate('05/05/2026'), '2026-05-05'); // same either way
+});
+
+test('receipt date: ambiguous or impossible dates return null', () => {
+    assert.equal(L.parseReceiptDate('03/04/2026'), null);
+    assert.equal(L.parseReceiptDate('2026-02-31'), null);
+    assert.equal(L.parseReceiptDate('no date here'), null);
+    assert.equal(L.parseReceiptDate(''), null);
+    assert.equal(L.parseReceiptDate(null), null);
+});
+
+test('receipt odometer: keywords, separators and sane range', () => {
+    assert.equal(L.parseReceiptOdometer('Mileage: 45123'), 45123);
+    assert.equal(L.parseReceiptOdometer('ODOMETER IN  45 123 km'), 45123);
+    assert.equal(L.parseReceiptOdometer('KM 120,500'), 120500);
+    assert.equal(L.parseReceiptOdometer('Odometer: 12'), null);       // too small
+    assert.equal(L.parseReceiptOdometer('Phone 416-555-1234'), null); // no keyword
+    assert.equal(L.parseReceiptOdometer(''), null);
+});
+
+test('receipt total: uses the last total, ignoring subtotal and tax lines', () => {
+    assert.equal(L.parseReceiptTotal('Subtotal 10.00\nTotal tax 1.30\nTOTAL: $11.30'), '11.30');
+    assert.equal(L.parseReceiptTotal('Grand Total CAD 1,234.50'), '1234.50');
+    assert.equal(L.parseReceiptTotal('Subtotal 10.00'), null);
+    assert.equal(L.parseReceiptTotal('nothing'), null);
+});
+
+test('cleanReceiptText tidies OCR output and caps length', () => {
+    assert.equal(L.cleanReceiptText('  a  \r\n\r\n\r\n\r\nb\t \n'), 'a\n\nb');
+    assert.equal(L.cleanReceiptText('x\u0000y\u0007z'), 'xyz');
+    assert.equal(L.cleanReceiptText(null), '');
+    assert.equal(L.cleanReceiptText('a'.repeat(7000)).length, 6000);
+});
+
+test('parseReceipts reads the receipts.json shape and rejects junk', () => {
+    const good = JSON.stringify({ receipts: { a1: { text: 'hello', scannedAt: 't' }, b2: { text: '  ' }, c3: 5 } });
+    assert.deepEqual(L.parseReceipts(good), { a1: { text: 'hello', scannedAt: 't' } });
+    assert.deepEqual(L.parseReceipts(''), {});
+    assert.deepEqual(L.parseReceipts('{oops'), {});
+    assert.deepEqual(L.parseReceipts('{"receipts":[1,2]}'), {});
+    assert.deepEqual(L.parseReceipts('{"logs":[]}'), {});
+});
+
+test('withReceipt sets, replaces and clears without mutating', () => {
+    const base = { a: { text: 'old', scannedAt: 'x' } };
+    const now = new Date('2026-10-25T12:00:00Z');
+    const set = L.withReceipt(base, 'b', ' new text ', now);
+    assert.equal(set.b.text, 'new text');
+    assert.equal(set.b.scannedAt, '2026-10-25T12:00:00.000Z');
+    assert.equal(Object.keys(base).length, 1);
+    assert.deepEqual(Object.keys(L.withReceipt(set, 'b', '   ')), ['a']);
+});
+
+test('buildGistFiles writes logs and receipts as separate files', () => {
+    const files = L.buildGistFiles([{ id: '1' }], { 1: { text: 'r' } });
+    assert.deepEqual(Object.keys(files), ['vehicle-logs.json', 'receipts.json']);
+    assert.deepEqual(JSON.parse(files['vehicle-logs.json'].content), { logs: [{ id: '1' }] });
+    assert.deepEqual(JSON.parse(files['receipts.json'].content), { receipts: { 1: { text: 'r' } } });
+    // round trip through the readers the page uses
+    assert.deepEqual(L.parseLogs(files['vehicle-logs.json'].content), [{ id: '1' }]);
+    assert.deepEqual(L.parseReceipts(files['receipts.json'].content), { 1: { text: 'r', scannedAt: null } });
+    // and a gist that has never had receipts
+    assert.ok(JSON.parse(L.buildGistFiles([], undefined)['receipts.json'].content).receipts);
+});
+
+// ---- PDF report ------------------------------------------------------------
+
+test('sanitizeForPdf keeps Latin-1, swaps smart punctuation, drops emoji', () => {
+    assert.equal(L.sanitizeForPdf('Café “quote” – ok…'), 'Café "quote" - ok...');
+    assert.equal(L.sanitizeForPdf('🔧 Tire ☀️'), ' Tire ');
+    assert.equal(L.sanitizeForPdf(null), '');
+});
+
+test('buildServiceReport: null for unknown vehicle', () => {
+    assert.equal(L.buildServiceReport([log('2026-01-01', 1)], {}, 'Nope'), null);
+});
+
+test('buildServiceReport: chronological entries with notes, tires and receipts', () => {
+    const a = tire('2026-04-15', 55000, 'summer', 'seasonal_change', { notes: 'Swapped 🔧 at home' });
+    const b = log('2026-10-12', 61250, { notes: 'Oil change' });
+    const c = log('2025-11-05', 49000, { category: 'tires', tireSet: 'winter', tireAction: 'new_tires' });
+    const receipts = { [b.id]: { text: 'JIFFY LUBE\nTOTAL $118.63\n\n\n\nThanks' } };
+    const r = L.buildServiceReport([a, b, c], receipts, 'Civic', new Date(2026, 9, 25, 21, 30));
+
+    assert.equal(r.title, 'Service History - Civic');
+    assert.equal(r.generated, 'Generated 2026-10-25');
+    assert.deepEqual(r.entries.map(e => e.heading.split('  |  ')[0]), ['2025-11-05', '2026-04-15', '2026-10-12']);
+    assert.equal(r.entries[0].heading, '2025-11-05  |  49,000 km  |  Tires');
+    assert.deepEqual(r.entries[0].lines, ['Tire service: Winter tires - New Tires']);
+    assert.deepEqual(r.entries[1].lines, ['Tire service: Summer tires - Seasonal Change', 'Notes: Swapped  at home']);
+    assert.deepEqual(r.entries[2].lines, ['Notes: Oil change']);
+    assert.deepEqual(r.entries[2].receiptLines, ['JIFFY LUBE', 'TOTAL $118.63', '', 'Thanks']);
+    assert.deepEqual(r.entries[0].receiptLines, []);
+    assert.ok(r.summary.includes('Entries: 3'));
+    assert.ok(r.summary.includes('Latest odometer: 61,250 km'));
+    assert.ok(r.summary.includes('Distance tracked: 12,250 km'));
+    assert.ok(r.summary.some(l => l.startsWith('Winter tires: 6,000 km (since new tires)')));
+    assert.ok(r.summary.some(l => l === 'Summer tires: 6,250 km (since first tire entry)'));
+});
+
+test('buildServiceReport: no tire lines when the vehicle has no tire entries', () => {
+    const r = L.buildServiceReport([log('2026-01-01', 1000), log('2026-02-01', 2000)], {}, 'Civic');
+    assert.ok(!r.summary.some(l => /tires/i.test(l)));
+});

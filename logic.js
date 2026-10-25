@@ -310,6 +310,211 @@
         };
     }
 
+    // ------------------------------------------------------------- receipts --
+
+    const MONTH_NUMBERS = {
+        jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6,
+        jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12
+    };
+    const MONTH_NAMES = '(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\\.?';
+
+    function ymd(y, m, d) {
+        const date = new Date(y, m - 1, d);
+        const valid = date.getFullYear() === y && date.getMonth() === m - 1 && date.getDate() === d;
+        return valid ? `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}` : null;
+    }
+
+    // Find a date in OCR text and return it as YYYY-MM-DD, or null. Numeric
+    // dates like 03/04/2026 are ambiguous (March 4 or April 3?) so they are
+    // only accepted when one reading is impossible; otherwise the person fills
+    // the date in themselves rather than getting a silently wrong one.
+    function parseReceiptDate(text) {
+        const s = String(text || '');
+        let m;
+
+        const iso = /\b((?:19|20)\d{2})[-\/.](\d{1,2})[-\/.](\d{1,2})\b/g;
+        while ((m = iso.exec(s))) {
+            const r = ymd(+m[1], +m[2], +m[3]);
+            if (r) return r;
+        }
+
+        const monthFirst = new RegExp('\\b' + MONTH_NAMES + '\\s+(\\d{1,2})(?:st|nd|rd|th)?,?\\s+((?:19|20)\\d{2})\\b', 'gi');
+        while ((m = monthFirst.exec(s))) {
+            const r = ymd(+m[3], MONTH_NUMBERS[m[1].toLowerCase()], +m[2]);
+            if (r) return r;
+        }
+
+        const dayFirst = new RegExp('\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+' + MONTH_NAMES + ',?\\s+((?:19|20)\\d{2})\\b', 'gi');
+        while ((m = dayFirst.exec(s))) {
+            const r = ymd(+m[3], MONTH_NUMBERS[m[2].toLowerCase()], +m[1]);
+            if (r) return r;
+        }
+
+        const numeric = /\b(\d{1,2})[\/.-](\d{1,2})[\/.-]((?:19|20)\d{2})\b/g;
+        while ((m = numeric.exec(s))) {
+            const a = +m[1], b = +m[2], y = +m[3];
+            let r = null;
+            if (a > 12 && b <= 12) r = ymd(y, b, a);        // DD/MM/YYYY
+            else if (b > 12 && a <= 12) r = ymd(y, a, b);   // MM/DD/YYYY
+            else if (a === b) r = ymd(y, a, b);             // same either way
+            if (r) return r;
+        }
+        return null;
+    }
+
+    // Odometer reading near a keyword such as "odometer" or "mileage".
+    function parseReceiptOdometer(text) {
+        const re = /(?:odometer|odo|mileage|milage|kilometers|kilometres|kms?)\b[^\d\n]{0,20}(\d{1,3}(?:[ ,]\d{3})+|\d{4,7})(?!\d)/gi;
+        const s = String(text || '');
+        let m;
+        while ((m = re.exec(s))) {
+            const value = parseInt(m[1].replace(/[ ,]/g, ''), 10);
+            if (value >= 1000 && value <= 999999) return value;
+        }
+        return null;
+    }
+
+    // The last "total" style amount on the receipt, as a string like "123.45".
+    // "Subtotal" and "Total tax" lines are deliberately not matched.
+    function parseReceiptTotal(text) {
+        const re = /(^|[^a-z])(?:grand\s+total|total\s+due|amount\s+due|balance\s+due|total)\b[^\dA-Za-z\n]{0,40}(?:(?:cad|usd)[^\dA-Za-z\n]{0,10})?(\d{1,3}(?:,\d{3})*\.\d{2}|\d+\.\d{2})/gim;
+        const s = String(text || '');
+        let m, last = null;
+        while ((m = re.exec(s))) last = m[2].replace(/,/g, '');
+        return last;
+    }
+
+    function parseReceiptText(text) {
+        return {
+            date: parseReceiptDate(text),
+            odometer: parseReceiptOdometer(text),
+            total: parseReceiptTotal(text)
+        };
+    }
+
+    const MAX_RECEIPT_CHARS = 6000;
+
+    // Tidy OCR output before it is stored: normalise line endings, drop control
+    // characters and runs of blank lines, and cap the length.
+    function cleanReceiptText(text) {
+        return String(text || '')
+            .replace(/\r\n?/g, '\n')
+            .replace(/[^\n\t\x20-\x7E -￿]/g, '')
+            .split('\n').map(line => line.replace(/\s+$/, '')).join('\n')
+            .replace(/\n{3,}/g, '\n\n')
+            .trim()
+            .slice(0, MAX_RECEIPT_CHARS);
+    }
+
+    // receipts.json: { receipts: { "<logId>": { text, scannedAt } } }
+    function parseReceipts(text) {
+        if (!text) return {};
+        try {
+            const parsed = JSON.parse(text);
+            const map = parsed && typeof parsed === 'object' ? parsed.receipts : null;
+            if (!map || typeof map !== 'object' || Array.isArray(map)) return {};
+            const result = {};
+            Object.keys(map).forEach(id => {
+                const r = map[id];
+                if (r && typeof r.text === 'string' && r.text.trim()) {
+                    result[id] = { text: r.text, scannedAt: r.scannedAt || null };
+                }
+            });
+            return result;
+        } catch (e) {
+            return {};
+        }
+    }
+
+    // The files PATCHed to the Gist. Receipt text lives in its own file so the
+    // main log file stays small.
+    function buildGistFiles(logs, receipts) {
+        return {
+            'vehicle-logs.json': { content: JSON.stringify({ logs: logs }, null, 2) },
+            'receipts.json': { content: JSON.stringify({ receipts: receipts || {} }, null, 2) }
+        };
+    }
+
+    // Set or clear one entry's receipt, returning a new map.
+    function withReceipt(receipts, logId, text, now) {
+        const next = Object.assign({}, receipts);
+        const cleaned = cleanReceiptText(text);
+        if (cleaned) {
+            next[logId] = { text: cleaned, scannedAt: (now || new Date()).toISOString() };
+        } else {
+            delete next[logId];
+        }
+        return next;
+    }
+
+    // -------------------------------------------------------------- report --
+
+    // jsPDF's built-in fonts only cover Latin-1, so swap typographic
+    // punctuation for plain equivalents and drop anything else (emoji, etc).
+    function sanitizeForPdf(text) {
+        return String(text === undefined || text === null ? '' : text)
+            .replace(/[‘’]/g, "'")
+            .replace(/[“”]/g, '"')
+            .replace(/[–—]/g, '-')
+            .replace(/…/g, '...')
+            .replace(/\r/g, '')
+            .replace(/[^\n\t\x20-\x7E -ÿ]/g, '');
+    }
+
+    function formatKm(n) {
+        return Number(n).toLocaleString('en-US') + ' km';
+    }
+
+    // Everything the PDF needs, as plain data (the page just draws it).
+    function buildServiceReport(logs, receipts, vehicle, generatedOn) {
+        const analysis = computeAnalysis(logs, vehicle);
+        if (!analysis) return null;
+        const chronological = sortOldestFirst(logs.filter(log => log.vehicle === vehicle));
+        const dayOf = log => toLocalDateInput(new Date(log.date));
+
+        const summary = [
+            'Entries: ' + chronological.length,
+            'First entry: ' + dayOf(chronological[0]),
+            'Latest entry: ' + dayOf(chronological[chronological.length - 1]),
+            'Latest odometer: ' + formatKm(Math.max(...analysis.points.map(p => p.y))),
+            'Distance tracked: ' + formatKm(analysis.totalDistance)
+        ];
+        if (analysis.tires) {
+            ['summer', 'winter'].forEach(name => {
+                const set = analysis.tires[name];
+                const label = name.charAt(0).toUpperCase() + name.slice(1) + ' tires: ';
+                summary.push(label + (set.known
+                    ? formatKm(set.km) + (set.sinceNew ? ' (since new tires)' : ' (since first tire entry)')
+                    : 'no data'));
+            });
+        }
+
+        const entries = chronological.map(log => {
+            const category = String(log.category || 'other');
+            const lines = [];
+            if (log.category === 'tires' && log.tireSet && log.tireAction) {
+                lines.push('Tire service: ' + (log.tireSet === 'summer' ? 'Summer' : 'Winter') +
+                    ' tires - ' + formatTireAction(log.tireAction));
+            }
+            if (log.notes) lines.push('Notes: ' + log.notes);
+
+            const receipt = receipts && receipts[log.id] ? cleanReceiptText(receipts[log.id].text) : '';
+            return {
+                heading: sanitizeForPdf(`${dayOf(log)}  |  ${formatKm(log.odometer)}  |  ` +
+                    category.charAt(0).toUpperCase() + category.slice(1)),
+                lines: lines.map(sanitizeForPdf),
+                receiptLines: receipt ? sanitizeForPdf(receipt).split('\n') : []
+            };
+        });
+
+        return {
+            title: sanitizeForPdf('Service History - ' + vehicle),
+            generated: 'Generated ' + toLocalDateInput(generatedOn || new Date()),
+            summary: summary,
+            entries: entries
+        };
+    }
+
     return {
         DAY_MS: DAY_MS,
         escapeHtml: escapeHtml,
@@ -325,6 +530,16 @@
         computeAnalysis: computeAnalysis,
         buildDateTicks: buildDateTicks,
         paddedRange: paddedRange,
-        buildOdometerChartConfig: buildOdometerChartConfig
+        buildOdometerChartConfig: buildOdometerChartConfig,
+        parseReceiptDate: parseReceiptDate,
+        parseReceiptOdometer: parseReceiptOdometer,
+        parseReceiptTotal: parseReceiptTotal,
+        parseReceiptText: parseReceiptText,
+        cleanReceiptText: cleanReceiptText,
+        parseReceipts: parseReceipts,
+        buildGistFiles: buildGistFiles,
+        withReceipt: withReceipt,
+        sanitizeForPdf: sanitizeForPdf,
+        buildServiceReport: buildServiceReport
     };
 });

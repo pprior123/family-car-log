@@ -310,6 +310,28 @@
             margin: 8px 0;
         }
        
+        .receipt-details {
+            margin-top: 8px;
+            font-size: 0.9em;
+        }
+       
+        .receipt-details summary {
+            cursor: pointer;
+            color: #1565c0;
+            font-weight: 600;
+        }
+       
+        .receipt-details pre {
+            white-space: pre-wrap;
+            word-break: break-word;
+            background: #f5f5f5;
+            border-radius: 6px;
+            padding: 10px;
+            margin-top: 6px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+       
         @media (max-width: 600px) {
             body {
                 padding: 10px;
@@ -556,6 +578,10 @@
                     <h3 style="font-size: 1em; margin-bottom: 8px;">📊 Quick Stats</h3>
                     <div id="analysisStats"></div>
                 </div>
+                
+                <div class="button-group" style="margin-top: 20px;">
+                    <button onclick="downloadServiceReport()">📄 Download Service History (PDF)</button>
+                </div>
             </div>
             
             <div id="noAnalysisData" style="text-align: center; padding: 40px; color: #999;">
@@ -649,6 +675,13 @@
                     <textarea id="notes" rows="3" placeholder="e.g., Changed oil, Rotated tires, Installed new tires"></textarea>
                 </div>
                
+                <div class="form-group">
+                    <label>🧾 Receipt (optional)</label>
+                    <input type="file" id="receiptFile" accept="image/*" onchange="scanReceipt('')">
+                    <div id="receiptStatus" style="font-size: 0.85em; color: #666; margin-top: 6px;"></div>
+                    <textarea id="receiptText" rows="5" placeholder="Take or choose a photo of the receipt and its text appears here. Only the text is saved, not the photo."></textarea>
+                </div>
+               
                 <div class="button-group">
                     <button onclick="saveLog()">Save Log Entry</button>
                     <button class="secondary" onclick="toggleAddForm()">Cancel</button>
@@ -711,6 +744,13 @@
                     <textarea id="editNotes" rows="3" placeholder="e.g., Changed oil, Rotated tires, Installed new tires"></textarea>
                 </div>
                
+                <div class="form-group">
+                    <label>🧾 Receipt (optional)</label>
+                    <input type="file" id="editReceiptFile" accept="image/*" onchange="scanReceipt('edit')">
+                    <div id="editReceiptStatus" style="font-size: 0.85em; color: #666; margin-top: 6px;"></div>
+                    <textarea id="editReceiptText" rows="5" placeholder="Take or choose a photo of the receipt and its text appears here. Only the text is saved, not the photo."></textarea>
+                </div>
+               
                 <div class="button-group">
                     <button onclick="saveEdit()">Save Changes</button>
                     <button class="secondary" onclick="cancelEdit()">Cancel</button>
@@ -737,6 +777,7 @@
     <script>
         const esc = VehicleLogic.escapeHtml;
         let logs = [];
+        let receipts = {};
         let currentFilter = 'all';
         let gistId = null;
         let githubToken = null;
@@ -752,15 +793,13 @@
             if (gistId || !useCloud) {
                 document.getElementById('setupCard').classList.add('hidden');
                 document.getElementById('mainApp').classList.remove('hidden');
-                await loadLogs();
+                const loaded = await loadLogs();
                
                 if (useCloud && gistId) {
-                    if (githubToken) {
+                    // Keep the error badge if the Gist could not be loaded
+                    if (loaded) {
                         updateSyncStatus('synced');
-                        document.getElementById('syncStatus').innerHTML = '☁️ Auto Sync';
-                    } else {
-                        updateSyncStatus('synced');
-                        document.getElementById('syncStatus').innerHTML = '☁️ Read Only';
+                        document.getElementById('syncStatus').innerHTML = githubToken ? '☁️ Auto Sync' : '☁️ Read Only';
                     }
                     document.getElementById('syncButton').classList.remove('hidden');
                 }
@@ -825,25 +864,40 @@
         // Load logs
         async function loadLogs() {
             if (useCloud && gistId) {
-                await loadFromGist();
+                return await loadFromGist();
             } else {
                 const saved = localStorage.getItem('vehicleLogs');
+                receipts = VehicleLogic.parseReceipts(localStorage.getItem('vehicleReceipts'));
                 if (saved) {
                     logs = VehicleLogic.parseLogs(saved);
                     updateUI();
                 }
+                return true;
             }
         }
        
         // Save logs
         async function saveLogs() {
             localStorage.setItem('vehicleLogs', JSON.stringify(logs));
+            localStorage.setItem('vehicleReceipts', JSON.stringify({ receipts: receipts }));
             
             if (useCloud && gistId) {
                 await saveToGist();
             } else {
                 updateSyncStatus('synced');
             }
+        }
+        
+        // The Gist API cuts off big files; fetch the full text when it does
+        async function readGistFile(file) {
+            if (file.truncated && file.raw_url) {
+                const response = await fetch(file.raw_url);
+                if (!response.ok) {
+                    throw new Error('Failed to load full Gist file');
+                }
+                return await response.text();
+            }
+            return file.content || '';
         }
         
         // Load from Gist
@@ -858,12 +912,21 @@
                 
                 const gist = await response.json();
                 const file = gist.files['vehicle-logs.json'];
+                const receiptsFile = gist.files['receipts.json'];
                 
-                if (file && file.content) {
-                    logs = VehicleLogic.parseLogs(file.content);
-                    localStorage.setItem('vehicleLogs', JSON.stringify(logs));
-                    updateUI();
+                if (receiptsFile) {
+                    receipts = VehicleLogic.parseReceipts(await readGistFile(receiptsFile));
+                    localStorage.setItem('vehicleReceipts', JSON.stringify({ receipts: receipts }));
+                } else {
+                    // This Gist has no receipts.json yet: keep what is saved on this device
+                    // so the next save uploads it instead of wiping it
+                    receipts = VehicleLogic.parseReceipts(localStorage.getItem('vehicleReceipts'));
                 }
+                if (file && (file.content || file.truncated)) {
+                    logs = VehicleLogic.parseLogs(await readGistFile(file));
+                    localStorage.setItem('vehicleLogs', JSON.stringify(logs));
+                }
+                updateUI();
                 
                 updateSyncStatus('synced');
                 return true;
@@ -872,6 +935,7 @@
                 updateSyncStatus('offline');
                 // Fall back to local storage
                 const saved = localStorage.getItem('vehicleLogs');
+                receipts = VehicleLogic.parseReceipts(localStorage.getItem('vehicleReceipts'));
                 if (saved) {
                     logs = VehicleLogic.parseLogs(saved);
                     updateUI();
@@ -891,10 +955,6 @@
             try {
                 updateSyncStatus('syncing');
                 
-                const data = {
-                    logs: logs
-                };
-                
                 const response = await fetch(`https://api.github.com/gists/${gistId}`, {
                     method: 'PATCH',
                     headers: {
@@ -902,11 +962,7 @@
                         'Content-Type': 'application/json',
                     },
                     body: JSON.stringify({
-                        files: {
-                            'vehicle-logs.json': {
-                                content: JSON.stringify(data, null, 2)
-                            }
-                        }
+                        files: VehicleLogic.buildGistFiles(logs, receipts)
                     })
                 });
                 
@@ -1003,6 +1059,7 @@
             }
            
             logs.push(log);
+            receipts = VehicleLogic.withReceipt(receipts, log.id, document.getElementById('receiptText').value);
             logs = VehicleLogic.sortNewestFirst(logs);
             saveLogs();
            
@@ -1010,6 +1067,8 @@
             document.getElementById('vehicleName').value = vehicle;
             document.getElementById('odometer').value = '';
             document.getElementById('notes').value = '';
+            document.getElementById('receiptText').value = '';
+            document.getElementById('receiptStatus').textContent = '';
             document.getElementById('category').value = 'maintenance';
             document.getElementById('tireFields').classList.add('hidden');
             // Reset date to today
@@ -1150,6 +1209,7 @@
                         </div>
                     </div>
                     ${log.notes ? `<div class="log-notes">${esc(log.notes)}</div>` : ''}
+                    ${receipts[log.id] ? `<details class="receipt-details"><summary>🧾 Receipt text</summary><pre>${esc(receipts[log.id].text)}</pre></details>` : ''}
                     ${log.category === 'tires' && log.tireSet && log.tireAction ? `<div style="margin-top: 8px; padding: 8px; background: #fff3e0; border-radius: 4px; font-size: 0.9em;">
                         <strong>🔧 Tire Service:</strong> ${log.tireSet === 'summer' ? '☀️ Summer' : '❄️ Winter'} Tires - ${esc(VehicleLogic.formatTireAction(log.tireAction))}
                     </div>` : ''}
@@ -1178,10 +1238,13 @@
             document.getElementById('currentMode').textContent = mode;
             
             if (useCloud && gistId && !githubToken) {
-                document.getElementById('exportSection').classList.remove('hidden');
-                document.getElementById('gistLink').href = `https://gist.github.com/${gistId}`;
+                const exportSection = document.getElementById('exportSection');
+                const gistLink = document.getElementById('gistLink');
+                if (exportSection) exportSection.classList.remove('hidden');
+                if (gistLink) gistLink.href = `https://gist.github.com/${gistId}`;
             } else {
-                document.getElementById('exportSection').classList.add('hidden');
+                const exportSection = document.getElementById('exportSection');
+                if (exportSection) exportSection.classList.add('hidden');
             }
         }
        
@@ -1269,6 +1332,7 @@
             const index = logs.findIndex(log => log.id === logId);
             if (index !== -1) {
                 logs.splice(index, 1);
+                receipts = VehicleLogic.withReceipt(receipts, logId, '');
                 saveLogs();
                 updateUI();
                 alert('✅ Log entry deleted successfully!');
@@ -1294,6 +1358,8 @@
             document.getElementById('editOdometer').value = log.odometer;
             document.getElementById('editCategory').value = log.category;
             document.getElementById('editNotes').value = log.notes || '';
+            document.getElementById('editReceiptText').value = receipts[log.id] ? receipts[log.id].text : '';
+            document.getElementById('editReceiptStatus').textContent = '';
             
             // Set the date (convert from ISO to YYYY-MM-DD format)
             const logDate = new Date(log.date);
@@ -1371,6 +1437,9 @@
             logs[logIndex].lastEdited = editTime.toISOString();
             logs[logIndex].lastEditedDisplay = editTime.toLocaleDateString() + ' at ' + editTime.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
             
+            // Save or clear the receipt text
+            receipts = VehicleLogic.withReceipt(receipts, editingLogId, document.getElementById('editReceiptText').value);
+            
             // Re-sort logs by date
             logs = VehicleLogic.sortNewestFirst(logs);
             
@@ -1431,6 +1500,189 @@
                 analysisChart.destroy();
                 analysisChart = null;
             }
+        }
+        
+        // ---------------------------------------------------------------
+        // Receipt scanning (in-browser OCR) and service history PDF.
+        // Both libraries are loaded on demand so the page stays light.
+        // ---------------------------------------------------------------
+        const TESSERACT_URL = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
+        const JSPDF_URL = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+        const scriptLoads = {};
+        
+        function loadScript(src) {
+            if (!scriptLoads[src]) {
+                scriptLoads[src] = new Promise((resolve, reject) => {
+                    const el = document.createElement('script');
+                    el.src = src;
+                    el.onload = resolve;
+                    el.onerror = () => {
+                        delete scriptLoads[src];
+                        reject(new Error('Could not load ' + src));
+                    };
+                    document.head.appendChild(el);
+                });
+            }
+            return scriptLoads[src];
+        }
+        
+        // Shrink big phone photos before OCR (much faster, no loss in accuracy)
+        async function prepareReceiptImage(file) {
+            const url = URL.createObjectURL(file);
+            try {
+                const img = await new Promise((resolve, reject) => {
+                    const i = new Image();
+                    i.onload = () => resolve(i);
+                    i.onerror = () => reject(new Error('Could not open that image'));
+                    i.src = url;
+                });
+                const scale = Math.min(1, 1800 / Math.max(img.naturalWidth, img.naturalHeight));
+                const canvas = document.createElement('canvas');
+                canvas.width = Math.round(img.naturalWidth * scale);
+                canvas.height = Math.round(img.naturalHeight * scale);
+                canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+                return canvas;
+            } finally {
+                URL.revokeObjectURL(url);
+            }
+        }
+        
+        // prefix '' = add form, 'edit' = edit form
+        window.scanReceipt = async function(prefix) {
+            const el = name => document.getElementById(prefix ? prefix + name : name.charAt(0).toLowerCase() + name.slice(1));
+            const fileInput = el('ReceiptFile');
+            const status = el('ReceiptStatus');
+            const textArea = el('ReceiptText');
+            const file = fileInput.files[0];
+            if (!file) return;
+            
+            try {
+                status.textContent = '⏳ Loading text recognition (first time takes a little while)...';
+                await loadScript(TESSERACT_URL);
+                
+                status.textContent = '⏳ Preparing photo...';
+                const canvas = await prepareReceiptImage(file);
+                
+                const result = await Tesseract.recognize(canvas, 'eng', {
+                    logger: m => {
+                        if (m.status === 'recognizing text') {
+                            status.textContent = '⏳ Reading receipt... ' + Math.round(m.progress * 100) + '%';
+                        }
+                    }
+                });
+                
+                const text = VehicleLogic.cleanReceiptText(result.data.text);
+                if (!text) {
+                    status.textContent = '⚠️ No text found. Try a clearer, well-lit photo, or type the details below.';
+                    return;
+                }
+                textArea.value = text;
+                
+                const parsed = VehicleLogic.parseReceiptText(text);
+                const notes = [];
+                if (!prefix) {
+                    // New entry: fill in what we can, but never overwrite an odometer already typed in
+                    const dateInput = el('LogDate');
+                    const odoInput = el('Odometer');
+                    if (parsed.date && dateInput.value !== parsed.date) {
+                        dateInput.value = parsed.date;
+                        notes.push('date ' + parsed.date);
+                    }
+                    if (parsed.odometer && !odoInput.value) {
+                        odoInput.value = parsed.odometer;
+                        notes.push('odometer ' + parsed.odometer.toLocaleString() + ' km');
+                    }
+                } else {
+                    // Existing entry: just report, don't change anything
+                    if (parsed.date) notes.push('date on receipt ' + parsed.date);
+                    if (parsed.odometer) notes.push('odometer on receipt ' + parsed.odometer.toLocaleString() + ' km');
+                }
+                if (parsed.total) notes.push('total $' + parsed.total);
+                
+                status.textContent = '✅ Receipt read.' +
+                    (notes.length ? (prefix ? ' Found: ' : ' Filled in: ') + notes.join(', ') + '.' : '') +
+                    ' Please check the text below and fix any mistakes.';
+            } catch (error) {
+                console.error('Receipt scan failed:', error);
+                status.textContent = '⚠️ Could not scan the receipt (' + error.message + '). You can still type the details below.';
+            } finally {
+                fileInput.value = '';
+            }
+        }
+        
+        // Download a PDF service history for the vehicle selected in Analysis
+        window.downloadServiceReport = async function() {
+            const vehicle = document.getElementById('analysisVehicleFilter').value;
+            const report = vehicle ? VehicleLogic.buildServiceReport(logs, receipts, vehicle, new Date()) : null;
+            if (!report) {
+                alert('Select a vehicle first');
+                return;
+            }
+            
+            try {
+                await loadScript(JSPDF_URL);
+            } catch (error) {
+                alert('⚠️ Could not load the PDF tool. Check your connection and try again.');
+                return;
+            }
+            
+            const doc = new window.jspdf.jsPDF({ unit: 'pt', format: 'letter' });
+            const margin = 48;
+            const width = 612 - 2 * margin;
+            const bottom = 792 - margin;
+            let y = margin;
+            
+            const need = height => {
+                if (y + height > bottom) {
+                    doc.addPage();
+                    y = margin;
+                }
+            };
+            const write = (text, size, opts) => {
+                opts = opts || {};
+                doc.setFont(opts.font || 'helvetica', opts.style || 'normal');
+                doc.setFontSize(size);
+                doc.setTextColor.apply(doc, opts.color || [30, 30, 30]);
+                const indent = opts.indent || 0;
+                const lineHeight = size * 1.35;
+                doc.splitTextToSize(text, width - indent).forEach(line => {
+                    need(lineHeight);
+                    doc.text(line, margin + indent, y + size);
+                    y += lineHeight;
+                });
+            };
+            
+            write(report.title, 20, { style: 'bold' });
+            write(report.generated, 10, { color: [120, 120, 120] });
+            y += 10;
+            report.summary.forEach(line => write(line, 11));
+            y += 6;
+            
+            report.entries.forEach(entry => {
+                need(70);
+                y += 10;
+                doc.setDrawColor(200, 200, 200);
+                doc.line(margin, y, margin + width, y);
+                y += 6;
+                write(entry.heading, 12, { style: 'bold' });
+                entry.lines.forEach(line => write(line, 10.5, { indent: 8 }));
+                if (entry.receiptLines.length) {
+                    write('Receipt:', 9, { style: 'bold', color: [100, 100, 100], indent: 8 });
+                    entry.receiptLines.forEach(line => write(line, 8.5, { font: 'courier', color: [70, 70, 70], indent: 16 }));
+                }
+            });
+            
+            const pages = doc.getNumberOfPages();
+            for (let i = 1; i <= pages; i++) {
+                doc.setPage(i);
+                doc.setFont('helvetica', 'normal');
+                doc.setFontSize(8);
+                doc.setTextColor(150, 150, 150);
+                doc.text('Page ' + i + ' of ' + pages, 306, 792 - 24, { align: 'center' });
+            }
+            
+            const fileName = 'service-history-' + vehicle.replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '').toLowerCase() + '.pdf';
+            doc.save(fileName);
         }
         
         // Tire tracking panel for the analysis view
