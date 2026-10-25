@@ -1451,34 +1451,50 @@
             const daysTracked = Math.floor((new Date(vehicleLogs[vehicleLogs.length - 1].date) - new Date(vehicleLogs[0].date)) / (1000 * 60 * 60 * 24));
             const avgPerDay = daysTracked > 0 ? (totalDistance / daysTracked).toFixed(1) : 0;
             
-            // Calculate tire tracking
+            // Calculate tire tracking: km driven on each tire set.
+            // Walk the logs in order; km between two odometer readings is credited
+            // to whichever set was on the car. A seasonal change (or new tires)
+            // switches the mounted set; new tires also reset that set's count.
             const tireLogs = vehicleLogs.filter(log => log.category === 'tires' && log.tireSet && log.tireAction);
             let tireTrackingHTML = '';
             
             if (tireLogs.length > 0) {
-                // Find last "new_tires" for each tire set
-                const summerTireLogs = tireLogs.filter(log => log.tireSet === 'summer');
-                const winterTireLogs = tireLogs.filter(log => log.tireSet === 'winter');
+                const kmBySet = { summer: 0, winter: 0 };
+                const seen = { summer: false, winter: false };
+                const sinceNew = { summer: false, winter: false };
+                let mounted = null;
+                let lastOdo = null;
                 
-                const lastSummerNew = summerTireLogs.reverse().find(log => log.tireAction === 'new_tires');
-                const lastWinterNew = winterTireLogs.reverse().find(log => log.tireAction === 'new_tires');
+                vehicleLogs.forEach(log => {
+                    const odo = Number(log.odometer);
+                    if (mounted && lastOdo !== null && odo > lastOdo) {
+                        kmBySet[mounted] += odo - lastOdo;
+                    }
+                    lastOdo = odo;
+                    
+                    if (log.category === 'tires' && log.tireSet && log.tireAction) {
+                        const set = log.tireSet;
+                        if (log.tireAction === 'new_tires') {
+                            kmBySet[set] = 0;
+                            sinceNew[set] = true;
+                            mounted = set;
+                            seen[set] = true;
+                        } else if (log.tireAction === 'seasonal_change') {
+                            mounted = set;
+                            seen[set] = true;
+                        } else if (!mounted) {
+                            // Rotation/repair/other tells us which set is on the car
+                            mounted = set;
+                            seen[set] = true;
+                        }
+                    }
+                });
                 
-                const currentOdometer = vehicleLogs[vehicleLogs.length - 1].odometer;
-                
-                let summerKm = 'No data';
-                let winterKm = 'No data';
-                
-                if (lastSummerNew) {
-                    summerKm = (currentOdometer - lastSummerNew.odometer).toLocaleString() + ' km';
-                }
-                
-                if (lastWinterNew) {
-                    winterKm = (currentOdometer - lastWinterNew.odometer).toLocaleString() + ' km';
-                }
-                
-                // Find currently installed tires
-                const lastSeasonalChange = tireLogs.filter(log => log.tireAction === 'seasonal_change').reverse()[0];
-                const currentTires = lastSeasonalChange ? (lastSeasonalChange.tireSet === 'summer' ? 'Summer' : 'Winter') : 'Unknown';
+                const fmt = set => seen[set] ? kmBySet[set].toLocaleString() + ' km' : 'No data';
+                const note = set => !seen[set] ? '' : (sinceNew[set] ? 'since new tires' : 'since first tire entry');
+                const summerKm = fmt('summer');
+                const winterKm = fmt('winter');
+                const currentTires = mounted ? (mounted === 'summer' ? 'Summer' : 'Winter') : 'Unknown';
                 
                 tireTrackingHTML = `
                     <div style="padding: 16px; background: #fff3e0; border-radius: 8px; margin-top: 20px;">
@@ -1491,10 +1507,12 @@
                             <div>
                                 <div style="font-size: 0.85em; color: #666;">Summer Tires</div>
                                 <div style="font-size: 1.2em; font-weight: bold; color: #f57c00;">${summerKm}</div>
+                                <div style="font-size: 0.75em; color: #888;">${note('summer')}</div>
                             </div>
                             <div>
                                 <div style="font-size: 0.85em; color: #666;">Winter Tires</div>
                                 <div style="font-size: 1.2em; font-weight: bold; color: #1976d2;">${winterKm}</div>
+                                <div style="font-size: 0.75em; color: #888;">${note('winter')}</div>
                             </div>
                         </div>
                     </div>
