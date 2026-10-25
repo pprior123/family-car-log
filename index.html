@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Family Vehicle Log</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+    <script src="logic.js"></script>
     <style>
         * {
             margin: 0;
@@ -51,6 +52,12 @@
             justify-content: space-between;
             align-items: center;
             margin-bottom: 20px;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+       
+        .header-actions {
+            display: flex;
             flex-wrap: wrap;
             gap: 12px;
         }
@@ -319,6 +326,24 @@
             .stats {
                 grid-template-columns: repeat(2, 1fr);
             }
+           
+            /* Phone: header buttons wrap instead of running off-screen, and
+               "Add Log" is a full-width button at the top. */
+            .header-actions {
+                width: 100%;
+                gap: 8px;
+            }
+           
+            .header-actions button {
+                flex: 1 1 auto;
+                padding: 10px 12px;
+            }
+           
+            .header-actions #addButton {
+                order: -1;
+                flex-basis: 100%;
+                padding: 14px 24px;
+            }
         }
     </style>
 </head>
@@ -550,7 +575,7 @@
                         <h1>🚗 Family Vehicle Log</h1>
                         <span id="syncStatus" class="sync-status synced">✓ Local Mode</span>
                     </div>
-                    <div style="display: flex; gap: 12px;">
+                    <div class="header-actions">
                         <button class="secondary small" onclick="openAnalysis()">📊 Analysis</button>
                         <button class="secondary small" onclick="openHelp()">❓ Help</button>
                         <button id="syncButton" class="secondary small hidden" onclick="manualSync()">🔄 Sync</button>
@@ -710,6 +735,7 @@
     </div>
 
     <script>
+        const esc = VehicleLogic.escapeHtml;
         let logs = [];
         let currentFilter = 'all';
         let gistId = null;
@@ -803,7 +829,7 @@
             } else {
                 const saved = localStorage.getItem('vehicleLogs');
                 if (saved) {
-                    logs = JSON.parse(saved);
+                    logs = VehicleLogic.parseLogs(saved);
                     updateUI();
                 }
             }
@@ -834,22 +860,23 @@
                 const file = gist.files['vehicle-logs.json'];
                 
                 if (file && file.content) {
-                    const data = JSON.parse(file.content);
-                    logs = data.logs || [];
+                    logs = VehicleLogic.parseLogs(file.content);
                     localStorage.setItem('vehicleLogs', JSON.stringify(logs));
                     updateUI();
                 }
                 
                 updateSyncStatus('synced');
+                return true;
             } catch (error) {
                 console.error('Error loading from Gist:', error);
                 updateSyncStatus('offline');
                 // Fall back to local storage
                 const saved = localStorage.getItem('vehicleLogs');
                 if (saved) {
-                    logs = JSON.parse(saved);
+                    logs = VehicleLogic.parseLogs(saved);
                     updateUI();
                 }
+                return false;
             }
         }
         
@@ -902,7 +929,7 @@
            
             if (!form.classList.contains('hidden')) {
                 // Set today's date as default
-                const today = new Date().toISOString().split('T')[0];
+                const today = VehicleLogic.toLocalDateInput(new Date());
                 document.getElementById('logDate').value = today;
                 document.getElementById('vehicleName').focus();
             }
@@ -955,10 +982,8 @@
                 return;
             }
            
-            // Use the selected date, but set time to current time
-            const selectedDate = new Date(logDateInput + 'T00:00:00');
-            const now = new Date();
-            selectedDate.setHours(now.getHours(), now.getMinutes(), now.getSeconds());
+            // Use the selected date, with the current time of day
+            const selectedDate = VehicleLogic.dateFromInput(logDateInput, new Date());
             
             const log = {
                 id: Date.now() + Math.random().toString(36).substr(2, 9),
@@ -978,7 +1003,7 @@
             }
            
             logs.push(log);
-            logs.sort((a, b) => new Date(b.date) - new Date(a.date));
+            logs = VehicleLogic.sortNewestFirst(logs);
             saveLogs();
            
             // Reset form
@@ -988,7 +1013,7 @@
             document.getElementById('category').value = 'maintenance';
             document.getElementById('tireFields').classList.add('hidden');
             // Reset date to today
-            const today = new Date().toISOString().split('T')[0];
+            const today = VehicleLogic.toLocalDateInput(new Date());
             document.getElementById('logDate').value = today;
             document.getElementById('category').value = 'maintenance';
            
@@ -1004,25 +1029,12 @@
        
         // Get vehicles
         function getVehicles() {
-            return [...new Set(logs.map(log => log.vehicle))];
+            return VehicleLogic.getVehicles(logs);
         }
        
         // Get vehicle stats
         function getVehicleStats(vehicle) {
-            const vehicleLogs = logs.filter(log => log.vehicle === vehicle);
-            if (vehicleLogs.length === 0) return null;
-           
-            const sorted = [...vehicleLogs].sort((a, b) => a.odometer - b.odometer);
-            const totalDistance = sorted[sorted.length - 1].odometer - sorted[0].odometer;
-            const latestOdometer = Math.max(...vehicleLogs.map(log => log.odometer));
-           
-            return {
-                totalLogs: vehicleLogs.length,
-                latestOdometer: latestOdometer,
-                totalDistance: totalDistance,
-                firstLog: sorted[0].displayDate,
-                lastLog: sorted[sorted.length - 1].displayDate
-            };
+            return VehicleLogic.getVehicleStats(logs, vehicle);
         }
        
         // Update UI
@@ -1042,7 +1054,7 @@
             filter.innerHTML = `<option value="all">All Vehicles (${logs.length} logs)</option>`;
             vehicles.forEach(vehicle => {
                 const count = logs.filter(log => log.vehicle === vehicle).length;
-                filter.innerHTML += `<option value="${vehicle}">${vehicle} (${count} logs)</option>`;
+                filter.innerHTML += `<option value="${esc(vehicle)}">${esc(vehicle)} (${count} logs)</option>`;
             });
            
             filter.value = currentValue;
@@ -1055,7 +1067,7 @@
            
             datalist.innerHTML = '';
             vehicles.forEach(vehicle => {
-                datalist.innerHTML += `<option value="${vehicle}">`;
+                datalist.innerHTML += `<option value="${esc(vehicle)}">`;
             });
         }
        
@@ -1076,7 +1088,7 @@
            
             statsCard.classList.remove('hidden');
             statsCard.innerHTML = `
-                <h2>${currentFilter} - Statistics</h2>
+                <h2>${esc(currentFilter)} - Statistics</h2>
                 <div class="stats">
                     <div class="stat-box blue">
                         <div class="stat-label">Total Logs</div>
@@ -1092,7 +1104,7 @@
                     </div>
                     <div class="stat-box orange">
                         <div class="stat-label">First Log</div>
-                        <div class="stat-value" style="font-size: 1.1em;">${stats.firstLog}</div>
+                        <div class="stat-value" style="font-size: 1.1em;">${esc(stats.firstLog)}</div>
                     </div>
                 </div>
             `;
@@ -1129,22 +1141,22 @@
                 logDiv.innerHTML = `
                     <div class="log-header">
                         <div>
-                            <div class="log-vehicle">${log.vehicle}</div>
-                            <div class="log-date">📅 ${log.displayDate} at ${log.displayTime}</div>
+                            <div class="log-vehicle">${esc(log.vehicle)}</div>
+                            <div class="log-date">📅 ${esc(log.displayDate)} at ${esc(log.displayTime)}</div>
                         </div>
                         <div style="text-align: right;">
                             <div class="log-odometer">⏲️ ${log.odometer.toLocaleString()} km</div>
-                            <div class="log-category">${log.category}</div>
+                            <div class="log-category">${esc(log.category)}</div>
                         </div>
                     </div>
-                    ${log.notes ? `<div class="log-notes">${log.notes}</div>` : ''}
+                    ${log.notes ? `<div class="log-notes">${esc(log.notes)}</div>` : ''}
                     ${log.category === 'tires' && log.tireSet && log.tireAction ? `<div style="margin-top: 8px; padding: 8px; background: #fff3e0; border-radius: 4px; font-size: 0.9em;">
-                        <strong>🔧 Tire Service:</strong> ${log.tireSet === 'summer' ? '☀️ Summer' : '❄️ Winter'} Tires - ${log.tireAction.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                        <strong>🔧 Tire Service:</strong> ${log.tireSet === 'summer' ? '☀️ Summer' : '❄️ Winter'} Tires - ${esc(VehicleLogic.formatTireAction(log.tireAction))}
                     </div>` : ''}
-                    ${log.lastEdited ? `<div style="font-size: 0.8em; color: #999; margin-top: 8px; font-style: italic;">Last edited: ${log.lastEditedDisplay}</div>` : ''}
+                    ${log.lastEdited ? `<div style="font-size: 0.8em; color: #999; margin-top: 8px; font-style: italic;">Last edited: ${esc(log.lastEditedDisplay)}</div>` : ''}
                     <div style="margin-top: 12px; text-align: right; display: flex; gap: 8px; justify-content: flex-end;">
-                        <button class="small secondary" onclick="editLog('${log.id}')" style="background: #e3f2fd; color: #1565c0;">✏️ Edit</button>
-                        <button class="small secondary" onclick="deleteLog('${log.id}')" style="background: #ffebee; color: #c62828;">🗑️ Delete</button>
+                        <button class="small secondary" data-action="edit" data-id="${esc(log.id)}" style="background: #e3f2fd; color: #1565c0;">✏️ Edit</button>
+                        <button class="small secondary" data-action="delete" data-id="${esc(log.id)}" style="background: #ffebee; color: #c62828;">🗑️ Delete</button>
                     </div>
                 `;
                 logsList.appendChild(logDiv);
@@ -1205,8 +1217,10 @@
             hideSettings();
             
             // Load data from Gist
-            await loadFromGist();
-            alert('✨ Automatic sync enabled! Your data will now sync automatically across all devices.');
+            const loaded = await loadFromGist();
+            alert(loaded
+                ? '✨ Automatic sync enabled! Your data will now sync automatically across all devices.'
+                : '⚠️ Sync settings saved, but the Gist could not be loaded. Check your Gist ID and connection.');
         }
         
         // Manual sync
@@ -1216,8 +1230,10 @@
                 return;
             }
             
-            await loadFromGist();
-            alert('Synced! Loaded latest data from GitHub Gist.');
+            const loaded = await loadFromGist();
+            alert(loaded
+                ? 'Synced! Loaded latest data from GitHub Gist.'
+                : '⚠️ Could not load from GitHub Gist. Showing your last saved copy.');
         }
         
         // Copy data for manual Gist upload
@@ -1281,7 +1297,7 @@
             
             // Set the date (convert from ISO to YYYY-MM-DD format)
             const logDate = new Date(log.date);
-            document.getElementById('editLogDate').value = logDate.toISOString().split('T')[0];
+            document.getElementById('editLogDate').value = VehicleLogic.toLocalDateInput(logDate);
             
             // Show/populate tire fields if this is a tire log
             if (log.category === 'tires') {
@@ -1327,10 +1343,9 @@
             const logIndex = logs.findIndex(l => l.id === editingLogId);
             if (logIndex === -1) return;
             
-            // Use the selected date
-            const selectedDate = new Date(logDateInput + 'T00:00:00');
-            const now = new Date();
-            selectedDate.setHours(now.getHours(), now.getMinutes(), now.getSeconds());
+            // Use the selected date, keeping the entry's original time of day so same-day order is stable
+            const originalDate = new Date(logs[logIndex].date);
+            const selectedDate = VehicleLogic.dateFromInput(logDateInput, isNaN(originalDate) ? new Date() : originalDate);
             
             // Update the log
             logs[logIndex].vehicle = vehicle;
@@ -1357,7 +1372,7 @@
             logs[logIndex].lastEditedDisplay = editTime.toLocaleDateString() + ' at ' + editTime.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
             
             // Re-sort logs by date
-            logs.sort((a, b) => new Date(b.date) - new Date(a.date));
+            logs = VehicleLogic.sortNewestFirst(logs);
             
             saveLogs();
             cancelEdit();
@@ -1405,7 +1420,7 @@
             const select = document.getElementById('analysisVehicleFilter');
             select.innerHTML = '<option value="">-- Select a vehicle --</option>';
             vehicles.forEach(vehicle => {
-                select.innerHTML += `<option value="${vehicle}">${vehicle}</option>`;
+                select.innerHTML += `<option value="${esc(vehicle)}">${esc(vehicle)}</option>`;
             });
         }
         
@@ -1418,21 +1433,43 @@
             }
         }
         
+        // Tire tracking panel for the analysis view
+        function renderTireTracking(tires) {
+            if (!tires) return '';
+            
+            const kmText = set => set.known ? set.km.toLocaleString() + ' km' : 'No data';
+            const noteText = set => !set.known ? '' : (set.sinceNew ? 'since new tires' : 'since first tire entry');
+            const currentTires = tires.mounted ? (tires.mounted === 'summer' ? 'Summer' : 'Winter') : 'Unknown';
+            
+            return `
+                <div style="padding: 16px; background: #fff3e0; border-radius: 8px; margin-top: 20px;">
+                    <h3 style="font-size: 1em; margin-bottom: 8px;">🔧 Tire Tracking</h3>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-top: 12px;">
+                        <div>
+                            <div style="font-size: 0.85em; color: #666;">Currently Installed</div>
+                            <div style="font-size: 1.2em; font-weight: bold; color: #e65100;">${currentTires} Tires</div>
+                        </div>
+                        <div>
+                            <div style="font-size: 0.85em; color: #666;">Summer Tires</div>
+                            <div style="font-size: 1.2em; font-weight: bold; color: #f57c00;">${kmText(tires.summer)}</div>
+                            <div style="font-size: 0.75em; color: #888;">${noteText(tires.summer)}</div>
+                        </div>
+                        <div>
+                            <div style="font-size: 0.85em; color: #666;">Winter Tires</div>
+                            <div style="font-size: 1.2em; font-weight: bold; color: #1976d2;">${kmText(tires.winter)}</div>
+                            <div style="font-size: 0.75em; color: #888;">${noteText(tires.winter)}</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+        
         // Update analysis
         window.updateAnalysis = function() {
             const vehicle = document.getElementById('analysisVehicleFilter').value;
+            const analysis = vehicle ? VehicleLogic.computeAnalysis(logs, vehicle) : null;
             
-            if (!vehicle) {
-                document.getElementById('analysisContent').style.display = 'none';
-                document.getElementById('noAnalysisData').style.display = 'block';
-                return;
-            }
-            
-            // Get logs for this vehicle
-            const vehicleLogs = logs.filter(log => log.vehicle === vehicle)
-                .sort((a, b) => new Date(a.date) - new Date(b.date)); // Sort chronologically
-            
-            if (vehicleLogs.length === 0) {
+            if (!analysis) {
                 document.getElementById('analysisContent').style.display = 'none';
                 document.getElementById('noAnalysisData').style.display = 'block';
                 return;
@@ -1441,176 +1478,49 @@
             document.getElementById('analysisContent').style.display = 'block';
             document.getElementById('noAnalysisData').style.display = 'none';
             
-            // Prepare data for chart
-            const dates = vehicleLogs.map(log => log.displayDate);
-            const odometers = vehicleLogs.map(log => log.odometer);
+            const avgPerService = analysis.avgPerService === null ? '—' : Math.round(analysis.avgPerService).toLocaleString() + ' km';
+            const avgPerDay = analysis.avgPerDay === null ? '—' : analysis.avgPerDay.toFixed(1) + ' km';
             
-            // Calculate stats
-            const totalDistance = odometers[odometers.length - 1] - odometers[0];
-            const avgPerLog = totalDistance / (vehicleLogs.length - 1);
-            const daysTracked = Math.floor((new Date(vehicleLogs[vehicleLogs.length - 1].date) - new Date(vehicleLogs[0].date)) / (1000 * 60 * 60 * 24));
-            const avgPerDay = daysTracked > 0 ? (totalDistance / daysTracked).toFixed(1) : 0;
-            
-            // Calculate tire tracking: km driven on each tire set.
-            // Walk the logs in order; km between two odometer readings is credited
-            // to whichever set was on the car. A seasonal change (or new tires)
-            // switches the mounted set; new tires also reset that set's count.
-            const tireLogs = vehicleLogs.filter(log => log.category === 'tires' && log.tireSet && log.tireAction);
-            let tireTrackingHTML = '';
-            
-            if (tireLogs.length > 0) {
-                const kmBySet = { summer: 0, winter: 0 };
-                const seen = { summer: false, winter: false };
-                const sinceNew = { summer: false, winter: false };
-                let mounted = null;
-                let lastOdo = null;
-                
-                vehicleLogs.forEach(log => {
-                    const odo = Number(log.odometer);
-                    if (mounted && lastOdo !== null && odo > lastOdo) {
-                        kmBySet[mounted] += odo - lastOdo;
-                    }
-                    lastOdo = odo;
-                    
-                    if (log.category === 'tires' && log.tireSet && log.tireAction) {
-                        const set = log.tireSet;
-                        if (log.tireAction === 'new_tires') {
-                            kmBySet[set] = 0;
-                            sinceNew[set] = true;
-                            mounted = set;
-                            seen[set] = true;
-                        } else if (log.tireAction === 'seasonal_change') {
-                            mounted = set;
-                            seen[set] = true;
-                        } else if (!mounted) {
-                            // Rotation/repair/other tells us which set is on the car
-                            mounted = set;
-                            seen[set] = true;
-                        }
-                    }
-                });
-                
-                const fmt = set => seen[set] ? kmBySet[set].toLocaleString() + ' km' : 'No data';
-                const note = set => !seen[set] ? '' : (sinceNew[set] ? 'since new tires' : 'since first tire entry');
-                const summerKm = fmt('summer');
-                const winterKm = fmt('winter');
-                const currentTires = mounted ? (mounted === 'summer' ? 'Summer' : 'Winter') : 'Unknown';
-                
-                tireTrackingHTML = `
-                    <div style="padding: 16px; background: #fff3e0; border-radius: 8px; margin-top: 20px;">
-                        <h3 style="font-size: 1em; margin-bottom: 8px;">🔧 Tire Tracking</h3>
-                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-top: 12px;">
-                            <div>
-                                <div style="font-size: 0.85em; color: #666;">Currently Installed</div>
-                                <div style="font-size: 1.2em; font-weight: bold; color: #e65100;">${currentTires} Tires</div>
-                            </div>
-                            <div>
-                                <div style="font-size: 0.85em; color: #666;">Summer Tires</div>
-                                <div style="font-size: 1.2em; font-weight: bold; color: #f57c00;">${summerKm}</div>
-                                <div style="font-size: 0.75em; color: #888;">${note('summer')}</div>
-                            </div>
-                            <div>
-                                <div style="font-size: 0.85em; color: #666;">Winter Tires</div>
-                                <div style="font-size: 1.2em; font-weight: bold; color: #1976d2;">${winterKm}</div>
-                                <div style="font-size: 0.75em; color: #888;">${note('winter')}</div>
-                            </div>
-                        </div>
-                    </div>
-                `;
-            }
-            
-            // Update stats
             document.getElementById('analysisStats').innerHTML = `
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px;">
                     <div>
                         <div style="font-size: 0.85em; color: #666;">Total Distance</div>
-                        <div style="font-size: 1.3em; font-weight: bold; color: #2e7d32;">${totalDistance.toLocaleString()} km</div>
+                        <div style="font-size: 1.3em; font-weight: bold; color: #2e7d32;">${analysis.totalDistance.toLocaleString()} km</div>
                     </div>
                     <div>
                         <div style="font-size: 0.85em; color: #666;">Avg per Service</div>
-                        <div style="font-size: 1.3em; font-weight: bold; color: #1565c0;">${avgPerLog.toFixed(0)} km</div>
+                        <div style="font-size: 1.3em; font-weight: bold; color: #1565c0;">${avgPerService}</div>
                     </div>
                     <div>
                         <div style="font-size: 0.85em; color: #666;">Days Tracked</div>
-                        <div style="font-size: 1.3em; font-weight: bold; color: #f57c00;">${daysTracked}</div>
+                        <div style="font-size: 1.3em; font-weight: bold; color: #f57c00;">${analysis.daysTracked}</div>
                     </div>
                     <div>
                         <div style="font-size: 0.85em; color: #666;">Avg per Day</div>
-                        <div style="font-size: 1.3em; font-weight: bold; color: #7b1fa2;">${avgPerDay} km</div>
+                        <div style="font-size: 1.3em; font-weight: bold; color: #7b1fa2;">${avgPerDay}</div>
                     </div>
                 </div>
-                ${tireTrackingHTML}
+                ${renderTireTracking(analysis.tires)}
             `;
             
-            // Destroy old chart if exists
+            // Redraw the chart (x axis is real time, not entry number)
             if (analysisChart) {
                 analysisChart.destroy();
             }
-            
-            // Create chart
             const ctx = document.getElementById('odometerChart').getContext('2d');
-            analysisChart = new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels: dates,
-                    datasets: [{
-                        label: 'Odometer (km)',
-                        data: odometers,
-                        borderColor: '#667eea',
-                        backgroundColor: 'rgba(102, 126, 234, 0.1)',
-                        borderWidth: 3,
-                        tension: 0.1,
-                        fill: true,
-                        pointRadius: 5,
-                        pointHoverRadius: 7,
-                        pointBackgroundColor: '#667eea',
-                        pointBorderColor: '#fff',
-                        pointBorderWidth: 2
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: true,
-                    plugins: {
-                        title: {
-                            display: true,
-                            text: vehicle + ' - Odometer Progress',
-                            font: { size: 16, weight: 'bold' }
-                        },
-                        legend: {
-                            display: false
-                        },
-                        tooltip: {
-                            callbacks: {
-                                label: function(context) {
-                                    return context.parsed.y.toLocaleString() + ' km';
-                                }
-                            }
-                        }
-                    },
-                    scales: {
-                        y: {
-                            beginAtZero: false,
-                            ticks: {
-                                callback: function(value) {
-                                    return value.toLocaleString() + ' km';
-                                }
-                            },
-                            title: {
-                                display: true,
-                                text: 'Odometer (km)'
-                            }
-                        },
-                        x: {
-                            title: {
-                                display: true,
-                                text: 'Date'
-                            }
-                        }
-                    }
-                }
-            });
+            analysisChart = new Chart(ctx, VehicleLogic.buildOdometerChartConfig(analysis));
         }
+        
+        // Edit / Delete buttons on log entries (event delegation, no inline handlers)
+        document.getElementById('logsList').addEventListener('click', function(event) {
+            const button = event.target.closest('button[data-action]');
+            if (!button) return;
+            if (button.dataset.action === 'edit') {
+                window.editLog(button.dataset.id);
+            } else if (button.dataset.action === 'delete') {
+                window.deleteLog(button.dataset.id);
+            }
+        });
        
         // Initialize
         init();

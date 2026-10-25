@@ -328,3 +328,11 @@ Potential features for future versions:
 - ❓ Added in-app help documentation
 - 💡 Added feature request button linked to GitHub Issues
 
+
+## Development
+
+The calculations (tire km, stats, chart data, escaping, date helpers) live in `logic.js` and are covered by unit tests in `tests/`. No dependencies are needed, just Node 18 or newer:
+
+```
+npm test
+```

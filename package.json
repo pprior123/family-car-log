@@ -1,0 +1,9 @@
+{
+  "name": "family-car-log",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Family Vehicle Log - static GitHub Pages app",
+  "scripts": {
+    "test": "node --test"
+  }
+}
