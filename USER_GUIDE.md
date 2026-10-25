@@ -7,7 +7,7 @@
 2. Create new Gist:
    - Filename: `vehicle-logs.json`
    - Content: `{"logs":[]}`
-3. Click "Create public gist"
+3. Click "Create secret gist"
 4. Copy the ID from URL (e.g., `1ad2c084abaae5e6c155ccc5d398490a`)
 
 ### 2️⃣ Open the App
@@ -63,7 +63,7 @@ Need to log something from last week?
 1. Click **⚙️ Settings**
 2. Click **📋 Copy Data**
 3. Click **Open Gist** → **Edit**
-4. Paste and click **Update public gist**
+4. Paste and click **Update secret gist**
 
 ### 📥 On Other Devices
 - Click **🔄 Sync** button

@@ -53,7 +53,7 @@ Cloud sync lets you share vehicle logs between devices (e.g., you and your spous
 3. Create a new Gist with:
    - **Filename**: `vehicle-logs.json`
    - **Content**: `{"logs":[]}`
-4. Click **"Create public gist"**
+4. Click **"Create secret gist"** (not "public": a secret gist is unlisted, so it will not show up in searches or on your profile)
 5. Copy the **Gist ID** from the URL (the long code after your username)
    - Example URL: `https://gist.github.com/username/1ad2c084abaae5e6c155ccc5d398490a`
    - Gist ID: `1ad2c084abaae5e6c155ccc5d398490a`
@@ -162,7 +162,7 @@ After adding new logs on any device:
    - Click **Open Gist** link
    - Click **Edit** on your Gist
    - Select all content and paste the copied data
-   - Click **Update public gist**
+   - Click **Update secret gist**
 
 ### Downloading Latest Data
 
@@ -200,9 +200,15 @@ The app automatically checks for new data when loaded!
 ## 🔒 Privacy & Security
 
 - **Your Data**: Stored locally in your browser and in your GitHub Gist
-- **Public Gist**: Anyone with the Gist ID can view your logs
-  - But Gist IDs are long random codes that are hard to guess
-  - Vehicle maintenance data is generally not sensitive
+- **Use a secret Gist, not a public one**: a public Gist is listed on your GitHub profile and can be found by anyone
+  - A secret Gist is unlisted, but "secret" is not "private": anyone who has the Gist ID can read it. Only share the ID with family.
+  - Gist IDs are long random codes that are hard to guess
+  - Receipt text can include personal details, so a secret Gist matters if you scan receipts
+- **Switching from a public Gist**: GitHub cannot convert a public Gist to secret, so make a new one:
+  1. Open your current Gist and copy the contents of `vehicle-logs.json` (and `receipts.json` if present)
+  2. Create a new Gist, name the file `vehicle-logs.json`, paste the contents, and click **Create secret gist**
+  3. Copy the new Gist ID, then in the app open **Settings** and enter the new ID with your existing token (do this on each device)
+  4. Delete the old public Gist
 - **No Account Required**: No email, password, or personal info needed
 - **No Tracking**: The app doesn't track or collect any usage data
 
@@ -283,7 +289,7 @@ Logs are stored as JSON:
 - If using cloud sync, click 🔄 Sync to reload from Gist
 
 ### Can't access Gist
-- Make sure your Gist is **public**, not secret
+- Make sure the Gist ID is correct and the Gist still exists (a secret Gist works fine, it just is not listed anywhere)
 - Verify the Gist ID is correct (long alphanumeric code)
 - Check that the Gist filename is exactly `vehicle-logs.json`
 
@@ -333,7 +339,7 @@ Potential features for future versions:
 
 - In the Add or Edit form, choose **Receipt** and take or pick a photo. The text is read **in your browser** (Tesseract.js), so the photo is never uploaded or saved. Only the recognised text is kept. Check it and fix any mistakes before saving.
 - A clear date and odometer on the receipt are pre-filled on new entries, and the total is mentioned. A scan never overwrites an odometer you have already typed.
-- Card numbers, email addresses and phone numbers are hidden automatically before anything is shown or saved. Because the setup guide uses a public Gist, avoid scanning anything else you would not want others to read, or use a secret Gist.
+- Card numbers, email addresses and phone numbers are hidden automatically before anything is shown or saved. Use a secret Gist (see Privacy & Security above) and avoid scanning anything else you would not want others to read.
 - Receipt text is stored in a separate `receipts.json` file in the same Gist, so `vehicle-logs.json` stays small.
 - **Analysis → Download Service History (PDF)** builds a per-vehicle report with every entry, tire totals and the receipt text.
 

@@ -9,7 +9,7 @@
 3. Fill in:
    - **Filename**: `vehicle-logs.json`
    - **Content**: `{"logs":[]}`
-4. Click **"Create public gist"**
+4. Click **"Create secret gist"** (not "public": a secret gist is unlisted, so it will not show up in searches or on your profile)
 5. **Copy the Gist ID** from the URL
    - Example URL: `https://gist.github.com/username/1ad2c084abaae5e6c155ccc5d398490a`
    - Gist ID: `1ad2c084abaae5e6c155ccc5d398490a`
