@@ -4,6 +4,10 @@
   "private": true,
   "description": "Family Vehicle Log - static GitHub Pages app",
   "scripts": {
-    "test": "node --test"
+    "test": "node --test",
+    "test:browser": "node tests/browser/run.js"
+  },
+  "devDependencies": {
+    "playwright": "1.63.0"
   }
 }

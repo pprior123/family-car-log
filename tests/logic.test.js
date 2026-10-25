@@ -502,3 +502,70 @@ test('buildServiceReport: no tire lines when the vehicle has no tire entries', (
     const r = L.buildServiceReport([log('2026-01-01', 1000), log('2026-02-01', 2000)], {}, 'Civic');
     assert.ok(!r.summary.some(l => /tires/i.test(l)));
 });
+
+// ---- redaction -------------------------------------------------------------
+
+test('redact: full card numbers (spaced, dashed, unbroken, Amex) are removed', () => {
+    for (const card of ['4111 1111 1111 1111', '4111-1111-1111-1111', '4111111111111111', '3782 822463 10005', '378282246310005']) {
+        assert.equal(L.redactSensitive(`Paid by ${card} thanks`), 'Paid by [card number removed] thanks', card);
+    }
+});
+
+test('redact: digit runs that fail the card checksum are left alone', () => {
+    assert.equal(L.redactSensitive('4111 1111 1111 1112'), '4111 1111 1111 1112');
+    assert.equal(L.redactSensitive('Invoice 1234567890123456'), 'Invoice 1234567890123456');
+});
+
+test('redact: already-masked cards, dates, odometers and totals are untouched', () => {
+    const keep = 'CARD ************1234  VISA **** **** **** 1234\nDate: 2026-10-12 14:05\nOdometer In: 61,250 km\nTOTAL $1,118.63\nStock 0123 4567';
+    assert.equal(L.redactSensitive(keep), keep);
+});
+
+test('redact: emails are removed', () => {
+    assert.equal(L.redactSensitive('Send to paul.j+car@gmail.com now'), 'Send to [email removed] now');
+    assert.equal(L.redactSensitive('a@b.co and c@d.example.org'), '[email removed] and [email removed]');
+});
+
+test('redact: phone numbers in common formats are removed', () => {
+    for (const phone of ['(416) 555-1234', '416-555-1234', '416.555.1234', '416 555 1234', '+1 416 555 1234', '1-416-555-1234']) {
+        assert.equal(L.redactSensitive(`Tel ${phone} ok`), 'Tel [phone removed] ok', phone);
+    }
+    assert.equal(L.redactSensitive('416-555-1234'), '[phone removed]');
+});
+
+test('redact: a phone number does not swallow a neighbouring digit', () => {
+    assert.equal(L.redactSensitive('9416-555-12345'), '9416-555-12345');
+});
+
+test('redact: the sample receipt is unchanged and still parses the same', () => {
+    assert.equal(L.redactSensitive(SAMPLE_RECEIPT), SAMPLE_RECEIPT);
+    assert.deepEqual(L.parseReceiptText(L.redactSensitive(SAMPLE_RECEIPT)), L.parseReceiptText(SAMPLE_RECEIPT));
+});
+
+test('redact: idempotent, safe on empty/non-string input', () => {
+    const once = L.redactSensitive('4111 1111 1111 1111 a@b.com 416-555-1234');
+    assert.equal(L.redactSensitive(once), once);
+    assert.equal(L.redactSensitive(''), '');
+    assert.equal(L.redactSensitive(null), '');
+    assert.equal(L.redactSensitive(undefined), '');
+});
+
+test('redact: applied when a receipt is saved and when a report is built', () => {
+    const saved = L.withReceipt({}, 'x', 'TOTAL $5.00\nVisa 4111 1111 1111 1111\nbob@example.com');
+    assert.equal(saved.x.text, 'TOTAL $5.00\nVisa [card number removed]\n[email removed]');
+    // an older, unredacted entry already in storage is still redacted in the PDF
+    const entry = log('2026-01-01', 1000);
+    const r = L.buildServiceReport([entry], { [entry.id]: { text: 'Visa 4111 1111 1111 1111' } }, 'Civic');
+    assert.deepEqual(r.entries[0].receiptLines, ['Visa [card number removed]']);
+});
+
+test('luhnValid known values', () => {
+    assert.equal(L.luhnValid('4111111111111111'), true);
+    assert.equal(L.luhnValid('4111111111111112'), false);
+    assert.equal(L.luhnValid(''), false);
+});
+
+test('logic.js uses no regex lookbehind (unsupported on iOS Safari before 16.4)', () => {
+    const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'logic.js'), 'utf8');
+    assert.ok(!/\(\?<[=!]/.test(src), 'found a lookbehind assertion');
+});

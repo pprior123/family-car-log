@@ -329,10 +329,23 @@ Potential features for future versions:
 - 💡 Added feature request button linked to GitHub Issues
 
 
+## Receipts and service history
+
+- In the Add or Edit form, choose **Receipt** and take or pick a photo. The text is read **in your browser** (Tesseract.js), so the photo is never uploaded or saved. Only the recognised text is kept. Check it and fix any mistakes before saving.
+- A clear date and odometer on the receipt are pre-filled on new entries, and the total is mentioned. A scan never overwrites an odometer you have already typed.
+- Card numbers, email addresses and phone numbers are hidden automatically before anything is shown or saved. Because the setup guide uses a public Gist, avoid scanning anything else you would not want others to read, or use a secret Gist.
+- Receipt text is stored in a separate `receipts.json` file in the same Gist, so `vehicle-logs.json` stays small.
+- **Analysis → Download Service History (PDF)** builds a per-vehicle report with every entry, tire totals and the receipt text.
+
 ## Development
 
-The calculations (tire km, stats, chart data, escaping, date helpers) live in `logic.js` and are covered by unit tests in `tests/`. No dependencies are needed, just Node 18 or newer:
+The calculations (tire km, stats, chart data, receipt parsing and redaction, report layout) live in `logic.js`.
 
 ```
-npm test
+npm test               # unit tests, no dependencies, Node 18+
+npm install            # once, for the browser tests
+npx playwright install chromium
+npm run test:browser   # real-browser tests of the page (stand-ins for the CDN libraries)
 ```
+
+Both run in GitHub Actions on every push and pull request.

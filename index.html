@@ -679,7 +679,7 @@
                     <label>🧾 Receipt (optional)</label>
                     <input type="file" id="receiptFile" accept="image/*" onchange="scanReceipt('')">
                     <div id="receiptStatus" style="font-size: 0.85em; color: #666; margin-top: 6px;"></div>
-                    <textarea id="receiptText" rows="5" placeholder="Take or choose a photo of the receipt and its text appears here. Only the text is saved, not the photo."></textarea>
+                    <textarea id="receiptText" rows="5" placeholder="Take or choose a photo of the receipt and its text appears here. Only the text is saved, not the photo. Card numbers, emails and phone numbers are hidden automatically."></textarea>
                 </div>
                
                 <div class="button-group">
@@ -748,7 +748,7 @@
                     <label>🧾 Receipt (optional)</label>
                     <input type="file" id="editReceiptFile" accept="image/*" onchange="scanReceipt('edit')">
                     <div id="editReceiptStatus" style="font-size: 0.85em; color: #666; margin-top: 6px;"></div>
-                    <textarea id="editReceiptText" rows="5" placeholder="Take or choose a photo of the receipt and its text appears here. Only the text is saved, not the photo."></textarea>
+                    <textarea id="editReceiptText" rows="5" placeholder="Take or choose a photo of the receipt and its text appears here. Only the text is saved, not the photo. Card numbers, emails and phone numbers are hidden automatically."></textarea>
                 </div>
                
                 <div class="button-group">
@@ -1571,7 +1571,10 @@
                     }
                 });
                 
-                const text = VehicleLogic.cleanReceiptText(result.data.text);
+                const cleaned = VehicleLogic.cleanReceiptText(result.data.text);
+                // Hide card numbers, emails and phone numbers before anything is shown or saved
+                const text = VehicleLogic.redactSensitive(cleaned);
+                const hidden = text !== cleaned;
                 if (!text) {
                     status.textContent = '⚠️ No text found. Try a clearer, well-lit photo, or type the details below.';
                     return;
@@ -1601,6 +1604,7 @@
                 
                 status.textContent = '✅ Receipt read.' +
                     (notes.length ? (prefix ? ' Found: ' : ' Filled in: ') + notes.join(', ') + '.' : '') +
+                    (hidden ? ' Card, email and phone details were hidden.' : '') +
                     ' Please check the text below and fix any mistakes.';
             } catch (error) {
                 console.error('Receipt scan failed:', error);

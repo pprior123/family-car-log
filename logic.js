@@ -435,10 +435,44 @@
         };
     }
 
+    // Passes the Luhn checksum that real card numbers satisfy. Used so that
+    // long digit runs on a receipt (invoice numbers, dates, odometers) are not
+    // mistaken for cards.
+    function luhnValid(digits) {
+        let sum = 0, alt = false;
+        for (let i = digits.length - 1; i >= 0; i--) {
+            let n = digits.charCodeAt(i) - 48;
+            if (alt) { n *= 2; if (n > 9) n -= 9; }
+            sum += n;
+            alt = !alt;
+        }
+        return digits.length > 0 && sum % 10 === 0;
+    }
+
+    // Hide details that should not end up in a (possibly public) Gist: full
+    // card numbers, email addresses and phone numbers. Already-masked cards
+    // such as "**** 1234", dates, odometers and totals are left alone.
+    // Written without lookbehind so it parses on older iPhones.
+    function redactSensitive(text) {
+        let s = String(text === undefined || text === null ? '' : text);
+
+        s = s.replace(/\b\d(?:[ -]?\d){12,18}\b/g, match => {
+            const digits = match.replace(/[ -]/g, '');
+            return digits.length >= 13 && digits.length <= 19 && luhnValid(digits)
+                ? '[card number removed]' : match;
+        });
+
+        s = s.replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g, '[email removed]');
+
+        s = s.replace(/(^|[^\d])(?:\+?1[ .-]?)?\(?\d{3}\)?[ .-]\d{3}[ .-]\d{4}(?!\d)/gm, '$1[phone removed]');
+
+        return s;
+    }
+
     // Set or clear one entry's receipt, returning a new map.
     function withReceipt(receipts, logId, text, now) {
         const next = Object.assign({}, receipts);
-        const cleaned = cleanReceiptText(text);
+        const cleaned = redactSensitive(cleanReceiptText(text));
         if (cleaned) {
             next[logId] = { text: cleaned, scannedAt: (now || new Date()).toISOString() };
         } else {
@@ -498,7 +532,7 @@
             }
             if (log.notes) lines.push('Notes: ' + log.notes);
 
-            const receipt = receipts && receipts[log.id] ? cleanReceiptText(receipts[log.id].text) : '';
+            const receipt = receipts && receipts[log.id] ? redactSensitive(cleanReceiptText(receipts[log.id].text)) : '';
             return {
                 heading: sanitizeForPdf(`${dayOf(log)}  |  ${formatKm(log.odometer)}  |  ` +
                     category.charAt(0).toUpperCase() + category.slice(1)),
@@ -536,6 +570,8 @@
         parseReceiptTotal: parseReceiptTotal,
         parseReceiptText: parseReceiptText,
         cleanReceiptText: cleanReceiptText,
+        redactSensitive: redactSensitive,
+        luhnValid: luhnValid,
         parseReceipts: parseReceipts,
         buildGistFiles: buildGistFiles,
         withReceipt: withReceipt,
