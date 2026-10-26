@@ -31,9 +31,12 @@ TOTAL                       $118.63`;
 
 const STUB_CHART = `window.__charts=[];window.Chart=function(c,cfg){window.__charts.push(cfg);this.destroy=function(){}};`;
 const STUB_TESS = `window.Tesseract={recognize:async function(cv,l,o){
-  if(o&&o.logger)o.logger({status:'recognizing text',progress:0.5});
   window.__tessCalls=(window.__tessCalls||0)+1; window.__tessCanvas=[cv.width,cv.height];
-  if(window.__ocrThrow)throw new Error('boom');
+  if(o&&o.logger){ o.logger({status:'recognizing text',progress:0.5});
+    window.__statusSeen=(window.__statusSeen||[]);
+    ['receiptStatus','editReceiptStatus'].forEach(function(id){window.__statusSeen.push(document.getElementById(id).textContent)}); }
+  if(window.__ocrThrow||window.__ocrThrowAt===window.__tessCalls)throw new Error('boom');
+  var q=window.__ocrQueue; if(q&&q.length) return {data:{text:q.shift()}};
   return {data:{text:window.__ocrText}};}};`;
 const STUB_PDF = `window.jspdf={jsPDF:function(o){
   var P=window.__pdf={texts:[],pages:1,saved:null,opts:o};
@@ -189,7 +192,7 @@ const store = (page, key) => page.evaluate(k => localStorage.getItem(k), key);
       await page.click('#addButton');
       await page.fill('#vehicleName', 'Civic');
       await page.setInputFiles('#receiptFile', { name: 'r.png', mimeType: 'image/png', buffer: PNG });
-      await page.waitForFunction(() => document.getElementById('receiptStatus').textContent.includes('Receipt read'));
+      await page.waitForFunction(() => document.getElementById('receiptStatus').textContent.includes('Read 1 page'));
       assert.equal(await page.inputValue('#receiptText'), SAMPLE);
       assert.equal(await page.inputValue('#logDate'), '2026-10-12');
       assert.equal(await page.inputValue('#odometer'), '61250');
@@ -250,13 +253,13 @@ const store = (page, key) => page.evaluate(k => localStorage.getItem(k), key);
       const odoBefore = await page.inputValue('#editOdometer');
       const dateBefore = await page.inputValue('#editLogDate');
       await page.setInputFiles('#editReceiptFile', { name: 'r.png', mimeType: 'image/png', buffer: PNG });
-      await page.waitForFunction(() => document.getElementById('editReceiptStatus').textContent.includes('Receipt read'));
+      await page.waitForFunction(() => document.getElementById('editReceiptStatus').textContent.includes('Read 1 page'));
       assert.equal(await page.inputValue('#editOdometer'), odoBefore);
       assert.equal(await page.inputValue('#editLogDate'), dateBefore);
-      assert.equal(await page.inputValue('#editReceiptText'), SAMPLE);
+      assert.equal(await page.inputValue('#editReceiptText'), SAMPLE + '\n\n--- Page 2 ---\n\n' + SAMPLE);
     });
 
-    await check('a large photo is shrunk before OCR (max 1800px)', async () => {
+    await check('a large photo is shrunk before OCR (max 2600px)', async () => {
       const big = await page.evaluate(async () => {
         const c = document.createElement('canvas'); c.width = 4000; c.height = 3000;
         const blob = await new Promise(r => c.toBlob(r, 'image/png'));
@@ -266,8 +269,87 @@ const store = (page, key) => page.evaluate(k => localStorage.getItem(k), key);
         await window.scanReceipt('edit');
         return window.__tessCanvas;
       });
-      assert.deepEqual(big, [1800, 1350]);
+      assert.deepEqual(big, [2600, 1950]);
     });
+    const PNGF = n => ({ name: 'p' + n + '.png', mimeType: 'image/png', buffer: PNG });
+    const PAGE1 = 'ACME AUTO\nDate: 2026-10-12\nMileage In: 61,250 km\nSection total: $400.00';
+    const PAGE2 = 'Date: 2026-11-01\nMileage In: 99,999 km\nGRAND TOTAL $1,234.50';
+
+    await check('several photos at once: read in order, divider between pages, date/odometer from page 1, total from the last page', async () => {
+      await page.click('button:has-text("Cancel") >> nth=0').catch(() => {});
+      await page.click('#addButton');
+      await page.fill('#receiptText', ''); await page.fill('#odometer', ''); await page.fill('#logDate', '2026-01-01');
+      await page.evaluate(([a, b]) => { window.__ocrQueue = [a, b]; window.__statusSeen = []; }, [PAGE1, PAGE2]);
+      await page.setInputFiles('#receiptFile', [PNGF(1), PNGF(2)]);
+      await page.waitForFunction(() => document.getElementById('receiptStatus').textContent.includes('Read 2 pages'));
+      const text = await page.inputValue('#receiptText');
+      assert.equal(text, PAGE1 + '\n\n--- Page 2 ---\n\n' + PAGE2);
+      assert.equal(await page.inputValue('#logDate'), '2026-10-12');
+      assert.equal(await page.inputValue('#odometer'), '61250');
+      assert.match(await page.textContent('#receiptStatus'), /total \$1234\.50/);
+      const seen = (await page.evaluate(() => window.__statusSeen)).join('|');
+      assert.match(seen, /photo 1 of 2/); assert.match(seen, /photo 2 of 2/);
+    });
+
+    await check('scanning again adds a page and never changes a date you set or an odometer you typed', async () => {
+      await page.fill('#logDate', '2026-01-01'); await page.fill('#odometer', '70000');
+      await page.evaluate(t => { window.__ocrQueue = [t]; }, 'Page three\nDate: 2026-12-24\nMileage In: 11,111 km');
+      await page.setInputFiles('#receiptFile', [PNGF(3)]);
+      await page.waitForFunction(() => document.getElementById('receiptText').value.includes('--- Page 3 ---'));
+      assert.equal(await page.inputValue('#logDate'), '2026-01-01');
+      assert.equal(await page.inputValue('#odometer'), '70000');
+      assert.match(await page.textContent('#receiptStatus'), /Found:/);
+      assert.ok((await page.inputValue('#receiptText')).endsWith('--- Page 3 ---\n\nPage three\nDate: 2026-12-24\nMileage In: 11,111 km'));
+    });
+
+    await check('Clear receipt text empties the box and the message', async () => {
+      await page.click('button:has-text("Clear receipt text") >> nth=0');
+      assert.equal(await page.inputValue('#receiptText'), '');
+      assert.equal(await page.textContent('#receiptStatus'), '');
+    });
+
+    await check('only the first 6 photos are read, and the person is told', async () => {
+      await page.evaluate(() => { window.__tessCalls = 0; window.__ocrQueue = null; window.__ocrText = 'one page'; });
+      await page.setInputFiles('#receiptFile', [1, 2, 3, 4, 5, 6, 7].map(PNGF));
+      await page.waitForFunction(() => document.getElementById('receiptStatus').textContent.includes('Read 6 pages'));
+      assert.equal(await page.evaluate(() => window.__tessCalls), 6);
+      assert.match(await page.textContent('#receiptStatus'), /Only the first 6 photos were read/);
+      assert.match(await page.inputValue('#receiptText'), /--- Page 6 ---/);
+      assert.ok(!/--- Page 7 ---/.test(await page.inputValue('#receiptText')));
+    });
+
+    await check('one bad photo among several does not lose the others', async () => {
+      await page.click('button:has-text("Clear receipt text") >> nth=0');
+      await page.evaluate(() => { window.__tessCalls = 0; window.__ocrThrowAt = 2; window.__ocrQueue = ['first ok', 'third ok']; });
+      await page.setInputFiles('#receiptFile', [PNGF(1), PNGF(2), PNGF(3)]);
+      await page.waitForFunction(() => document.getElementById('receiptStatus').textContent.includes('Read 2 pages'));
+      assert.equal(await page.inputValue('#receiptText'), 'first ok\n\n--- Page 2 ---\n\nthird ok');
+      assert.match(await page.textContent('#receiptStatus'), /1 photo\(s\) had no readable text/);
+      await page.evaluate(() => { window.__ocrThrowAt = 0; });
+    });
+
+    await check('addresses, postal codes, VIN and plate are hidden on scan, and the useful lines survive', async () => {
+      await page.click('button:has-text("Clear receipt text") >> nth=0');
+      const invoice = ['ACME AUTO', 'Date: 2026-10-12', '45 Maple Crescent Unit 4', 'ORLEANS, ON K2P 1A1', 'VIN: 1HGCM82633A004352 License Plate: ABC 123',
+                       'Mileage In: 192,633 km', 'Part: Tie Rod End $105.77', 'Total: $4,370.55'].join('\n');
+      await page.evaluate(t => { window.__ocrQueue = [t]; }, invoice);
+      await page.setInputFiles('#receiptFile', [PNGF(1)]);
+      await page.waitForFunction(() => document.getElementById('receiptText').value.includes('Total'));
+      const text = await page.inputValue('#receiptText');
+      for (const secret of ['Maple', 'K2P', '1HGCM', 'ABC 123']) assert.ok(!text.includes(secret), secret);
+      for (const keep of ['Mileage In: 192,633 km', '$105.77', '$4,370.55']) assert.ok(text.includes(keep), keep);
+      assert.match(await page.textContent('#receiptStatus'), /address and ID details were hidden/);
+    });
+
+    await check('a garbled future date is ignored: the next real date on the receipt is used', async () => {
+      await page.click('button:has-text("Clear receipt text") >> nth=0');
+      await page.fill('#logDate', '2026-01-01');
+      await page.evaluate(t => { window.__ocrQueue = [t]; }, 'Created: 06/29/2029 at 9:35AM\nFri 5/30/2025 - Page 1 of 2');
+      await page.setInputFiles('#receiptFile', [PNGF(1)]);
+      await page.waitForFunction(() => document.getElementById('receiptText').value.includes('Page 1 of 2'));
+      assert.equal(await page.inputValue('#logDate'), '2025-05-30');
+    });
+
     assert.deepEqual(page.errors, [], 'no page errors during scanning');
     await ctx.close();
   }

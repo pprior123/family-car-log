@@ -328,25 +328,34 @@
     // dates like 03/04/2026 are ambiguous (March 4 or April 3?) so they are
     // only accepted when one reading is impossible; otherwise the person fills
     // the date in themselves rather than getting a silently wrong one.
-    function parseReceiptDate(text) {
+    function parseReceiptDate(text, now) {
         const s = String(text || '');
         let m;
+        // OCR can garble digits into a valid but wrong date (05/29/2025 -> 06/29/2029),
+        // so ignore anything in the future (2 days of slack for time zones) or before 1990.
+        const latest = (now || new Date()).getTime() + 2 * DAY_MS;
+        const earliest = new Date(1990, 0, 1).getTime();
+        const sane = r => {
+            if (!r) return null;
+            const t = new Date(r + 'T12:00:00').getTime();
+            return t >= earliest && t <= latest ? r : null;
+        };
 
         const iso = /\b((?:19|20)\d{2})[-\/.](\d{1,2})[-\/.](\d{1,2})\b/g;
         while ((m = iso.exec(s))) {
-            const r = ymd(+m[1], +m[2], +m[3]);
+            const r = sane(ymd(+m[1], +m[2], +m[3]));
             if (r) return r;
         }
 
         const monthFirst = new RegExp('\\b' + MONTH_NAMES + '\\s+(\\d{1,2})(?:st|nd|rd|th)?,?\\s+((?:19|20)\\d{2})\\b', 'gi');
         while ((m = monthFirst.exec(s))) {
-            const r = ymd(+m[3], MONTH_NUMBERS[m[1].toLowerCase()], +m[2]);
+            const r = sane(ymd(+m[3], MONTH_NUMBERS[m[1].toLowerCase()], +m[2]));
             if (r) return r;
         }
 
         const dayFirst = new RegExp('\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+' + MONTH_NAMES + ',?\\s+((?:19|20)\\d{2})\\b', 'gi');
         while ((m = dayFirst.exec(s))) {
-            const r = ymd(+m[3], MONTH_NUMBERS[m[2].toLowerCase()], +m[1]);
+            const r = sane(ymd(+m[3], MONTH_NUMBERS[m[2].toLowerCase()], +m[1]));
             if (r) return r;
         }
 
@@ -357,7 +366,7 @@
             if (a > 12 && b <= 12) r = ymd(y, b, a);        // DD/MM/YYYY
             else if (b > 12 && a <= 12) r = ymd(y, a, b);   // MM/DD/YYYY
             else if (a === b) r = ymd(y, a, b);             // same either way
-            if (r) return r;
+            if (sane(r)) return r;
         }
         return null;
     }
@@ -384,15 +393,15 @@
         return last;
     }
 
-    function parseReceiptText(text) {
+    function parseReceiptText(text, now) {
         return {
-            date: parseReceiptDate(text),
+            date: parseReceiptDate(text, now),
             odometer: parseReceiptOdometer(text),
             total: parseReceiptTotal(text)
         };
     }
 
-    const MAX_RECEIPT_CHARS = 6000;
+    const MAX_RECEIPT_CHARS = 12000;
 
     // Tidy OCR output before it is stored: normalise line endings, drop control
     // characters and runs of blank lines, and cap the length.
@@ -404,6 +413,43 @@
             .replace(/\n{3,}/g, '\n\n')
             .trim()
             .slice(0, MAX_RECEIPT_CHARS);
+    }
+
+    const PAGE_DIVIDER = /^--- Page (\d+) ---$/gm;
+
+    /*
+     * Add freshly scanned pages to whatever receipt text is already there.
+     * Each page is cleaned and redacted first. Pages after the first get a
+     * "--- Page N ---" divider, numbered on from any dividers already present.
+     * Pages with no text are skipped. Returns the combined text plus counts
+     * so the page can tell the person what happened.
+     */
+    function appendReceiptPages(existingText, newPages) {
+        let text = cleanReceiptText(existingText);
+        let pageCount = 0;
+        if (text) {
+            pageCount = 1;
+            const dividers = text.match(PAGE_DIVIDER);
+            if (dividers) pageCount += dividers.length;
+        }
+        let added = 0, skipped = 0, hidden = false;
+        (newPages || []).forEach(page => {
+            const cleaned = cleanReceiptText(page);
+            const safe = redactSensitive(cleaned);
+            if (!safe) { skipped++; return; }
+            if (safe !== cleaned) hidden = true;
+            pageCount++;
+            added++;
+            text = text ? text + '\n\n--- Page ' + pageCount + ' ---\n\n' + safe : safe;
+        });
+        const full = text.length;
+        return {
+            text: cleanReceiptText(text),
+            added: added,
+            skipped: skipped,
+            hidden: hidden,
+            truncated: full > MAX_RECEIPT_CHARS
+        };
     }
 
     // receipts.json: { receipts: { "<logId>": { text, scannedAt } } }
@@ -462,9 +508,30 @@
                 ? '[card number removed]' : match;
         });
 
-        s = s.replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g, '[email removed]');
+        // (OCR sometimes inserts a space in the ending, as in "name@outlook. com")
+        s = s.replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*(?:\.[A-Za-z]{2,}|\.[ ]?(?:com|ca|net|org|edu|gov|info|io|co|us|uk)\b)/gi, '[email removed]');
 
         s = s.replace(/(^|[^\d])(?:\+?1[ .-]?)?\(?\d{3}\)?[ .-]\d{3}[ .-]\d{4}(?!\d)/gm, '$1[phone removed]');
+
+        // The rules below are patterns, not understanding: they catch the common
+        // layouts and will miss some, so the text should still be read through.
+
+        // Canadian postal codes (K1A 0B1) and US ZIP+4 (12345-6789)
+        s = s.replace(/(^|[^A-Za-z0-9])[ABCEGHJ-NPRSTVXY]\d[ABCEGHJ-NPRSTV-Z][ -]?\d[ABCEGHJ-NPRSTV-Z]\d(?![A-Za-z0-9])/gi, '$1[postal code removed]');
+        s = s.replace(/(^|[^\d])\d{5}-\d{4}(?!\d)/g, '$1[postal code removed]');
+
+        // Street addresses that start a line: "123 Maple Crescent", "45 Main St Unit 2"
+        s = s.replace(/^([ \t]*)\d{1,6}[A-Za-z]?[ \t]+(?:[A-Za-z0-9.'-]+[ \t]+){0,4}?(?:st|street|ave|avenue|rd|road|dr|drive|blvd|boulevard|cres|crescent|ln|lane|way|ct|court|crt|pl|place|terr|terrace|pkwy|parkway|cir|circle|hwy|highway|trl|trail|sq|square)\b\.?(?:[ \t]*(?:#|unit|apt|suite|ste)\.?[ \t]*[A-Za-z0-9-]+)?/gim, '$1[address removed]');
+
+        // VIN: after a "VIN" label, or any 17-character VIN-shaped token
+        s = s.replace(/\bVIN\b[ \t]*(?:no\.?|#)?[ \t]*[:#]?[ \t]*(?!removed\b)[A-Za-z0-9]{6,17}\b/gi, 'VIN: [VIN removed]');
+        s = s.replace(/\b(?=[A-HJ-NPR-Z0-9]*\d)(?=[A-HJ-NPR-Z0-9]*[A-HJ-NPR-Z])[A-HJ-NPR-Z0-9]{17}\b/gi, '[VIN removed]');
+
+        // License plate after a "License Plate:" label
+        s = s.replace(/\b(?:licen[sc]e[ \t]*plate|plate)[ \t]*(?:no\.?|#)?[ \t]*[:#][ \t]*[A-Za-z0-9]{2,8}(?:[ -][A-Za-z0-9]{2,4}\b)?/gi, 'License plate: [plate removed]');
+
+        // A name right after a label such as "Customer:" or "Bill to:" (up to 2 words)
+        s = s.replace(/\b(customer name|customer|name|bill(?:ed)? to|sold to|owner)[ \t]*:[ \t]*[A-Za-z][A-Za-z.'-]*(?:[ \t]+[A-Za-z][A-Za-z.'-]*)?/gi, '$1: [name removed]');
 
         return s;
     }
@@ -571,6 +638,8 @@
         parseReceiptText: parseReceiptText,
         cleanReceiptText: cleanReceiptText,
         redactSensitive: redactSensitive,
+        appendReceiptPages: appendReceiptPages,
+        MAX_RECEIPT_CHARS: MAX_RECEIPT_CHARS,
         luhnValid: luhnValid,
         parseReceipts: parseReceipts,
         buildGistFiles: buildGistFiles,

@@ -429,7 +429,7 @@ test('cleanReceiptText tidies OCR output and caps length', () => {
     assert.equal(L.cleanReceiptText('  a  \r\n\r\n\r\n\r\nb\t \n'), 'a\n\nb');
     assert.equal(L.cleanReceiptText('x\u0000y\u0007z'), 'xyz');
     assert.equal(L.cleanReceiptText(null), '');
-    assert.equal(L.cleanReceiptText('a'.repeat(7000)).length, 6000);
+    assert.equal(L.cleanReceiptText('a'.repeat(13000)).length, 12000);
 });
 
 test('parseReceipts reads the receipts.json shape and rejects junk', () => {
@@ -537,9 +537,10 @@ test('redact: a phone number does not swallow a neighbouring digit', () => {
     assert.equal(L.redactSensitive('9416-555-12345'), '9416-555-12345');
 });
 
-test('redact: the sample receipt is unchanged and still parses the same', () => {
-    assert.equal(L.redactSensitive(SAMPLE_RECEIPT), SAMPLE_RECEIPT);
-    assert.deepEqual(L.parseReceiptText(L.redactSensitive(SAMPLE_RECEIPT)), L.parseReceiptText(SAMPLE_RECEIPT));
+test('redact: on the sample receipt only the street address is hidden; date, odometer and total still parse', () => {
+    const redacted = L.redactSensitive(SAMPLE_RECEIPT);
+    assert.equal(redacted, SAMPLE_RECEIPT.replace('123 Main St,', '[address removed],'));
+    assert.deepEqual(L.parseReceiptText(redacted), L.parseReceiptText(SAMPLE_RECEIPT));
 });
 
 test('redact: idempotent, safe on empty/non-string input', () => {
@@ -568,4 +569,199 @@ test('luhnValid known values', () => {
 test('logic.js uses no regex lookbehind (unsupported on iOS Safari before 16.4)', () => {
     const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'logic.js'), 'utf8');
     assert.ok(!/\(\?<[=!]/.test(src), 'found a lookbehind assertion');
+});
+
+// ---- extra hiding: addresses, postal codes, VIN, plate, names --------------
+
+// A made-up invoice laid out like a real one. Nothing here is a real person.
+const FAKE_INVOICE = `ACME AUTO SERVICE
+500 Example Boulevard
+Ottawa, ON K1A 0B1
+(613) 555-0142
+shop@example.com
+Invoice #4110001497
+Created: 05/29/2025 at 9:35AM
+Invoiced: 05/30/2025
+JANE SAMPLE
+45 Maple Crescent Unit 4
+ORLEANS, ON K2P 1A1
+Mobile: 613-555-0100
+2011 Mazda 3 Sport GX (Red)
+VIN: 1HGCM82633A004352
+License Plate: ABC 123
+Mileage In: 192,633 km
+Part: NAPA Rack & Pinion Assembly  $1,631.37  1  $1,631.37
+Part: W-1996 - ENVIRONMENTAL RECYCLING FEE  $2.99  1  $2.99
+Labor: WHEEL ALIGNMENT  1.5  $224.99
+Total: $4,370.55
+Fri 5/30/2025 - Page 1 of 2`;
+
+test('hiding: postal codes, any case and spacing; ZIP+4', () => {
+    assert.equal(L.redactSensitive('Ottawa ON K1A 0B1'), 'Ottawa ON [postal code removed]');
+    assert.equal(L.redactSensitive('k2p1a1'), '[postal code removed]');
+    assert.equal(L.redactSensitive('M5V-2T6 ok'), '[postal code removed] ok');
+    assert.equal(L.redactSensitive('Boston MA 02108-1234'), 'Boston MA [postal code removed]');
+});
+
+test('hiding: things that merely look like postal codes are kept', () => {
+    assert.equal(L.redactSensitive('Part #: 262076'), 'Part #: 262076');
+    assert.equal(L.redactSensitive('D1A 1A1'), 'D1A 1A1');            // D is never used in a postal code
+    assert.equal(L.redactSensitive('Total $12345.67'), 'Total $12345.67');
+    assert.equal(L.redactSensitive('Odometer 192,633'), 'Odometer 192,633');
+});
+
+test('hiding: street addresses at the start of a line', () => {
+    assert.equal(L.redactSensitive('123 Maple Crescent'), '[address removed]');
+    assert.equal(L.redactSensitive('45 Main St Unit 4'), '[address removed]');
+    assert.equal(L.redactSensitive('1466 BRYERFIELD CRES'), '[address removed]');
+    assert.equal(L.redactSensitive('  9 Elm Ave.'), '  [address removed]');
+    assert.equal(L.redactSensitive('77 Lakeshore Blvd #12'), '[address removed]');
+    // OCR often glues the next column on: only the address part goes
+    assert.equal(L.redactSensitive('123 Maple Crescent VIN: 1HGCM82633A004352'), '[address removed] VIN: [VIN removed]');
+});
+
+test('hiding: part and price lines are not mistaken for addresses', () => {
+    for (const line of ['Part: NAPA Power Steering Hoses $305.25', '2 Tie Rod End $105.77', 'Mileage In: 192,633 km',
+                        'Labor: WHEEL ALIGNMENT 1.5 $224.99', 'Part: 1 Drive belt $20.00 (mid-line)']) {
+        assert.equal(L.redactSensitive(line), line, line);
+    }
+});
+
+test('hiding: VIN after a label or as a bare 17-character token', () => {
+    assert.equal(L.redactSensitive('VIN: 1HGCM82633A004352'), 'VIN: [VIN removed]');
+    assert.equal(L.redactSensitive('vin # 1hgcm82633a004352 x'), 'VIN: [VIN removed] x');
+    assert.equal(L.redactSensitive('VIN: gM1BLTKF1B15'), 'VIN: [VIN removed]');       // partial, as OCR often returns
+    assert.equal(L.redactSensitive('Chassis 1HGCM82633A004352 done'), 'Chassis [VIN removed] done');
+    assert.equal(L.redactSensitive('VINYL SEAL 1234567'), 'VINYL SEAL 1234567');       // not a VIN label
+    assert.equal(L.redactSensitive('Ref 12345678901234567'), 'Ref 12345678901234567'); // all digits, not a VIN
+});
+
+test('hiding: licence plate after its label, without eating the next field', () => {
+    assert.equal(L.redactSensitive('License Plate: ABC 123'), 'License plate: [plate removed]');
+    assert.equal(L.redactSensitive('Licence plate #: ab-12'), 'License plate: [plate removed]');
+    assert.equal(L.redactSensitive('License Plate: CBF Mileage In: 192,633'), 'License plate: [plate removed] Mileage In: 192,633');
+    assert.equal(L.redactSensitive('Plate glass $12.00'), 'Plate glass $12.00');       // no colon, not a label
+});
+
+test('hiding: a name right after Customer / Name / Bill to / Owner', () => {
+    assert.equal(L.redactSensitive('Customer: Jane Sample'), 'Customer: [name removed]');
+    assert.equal(L.redactSensitive('Bill to: Anne-Christine Auge'), 'Bill to: [name removed]');
+    assert.equal(L.redactSensitive('Customer: Jane Sample  Bill to: ACME Ltd'), 'Customer: [name removed]  Bill to: [name removed]');
+    assert.equal(L.redactSensitive('Customer Comments\nPOWER STEERING LEAK'), 'Customer Comments\nPOWER STEERING LEAK');
+    assert.equal(L.redactSensitive('Service Writer: Dan Smith'), 'Service Writer: Dan Smith');
+});
+
+test('hiding: a realistic invoice loses the personal lines but keeps everything useful', () => {
+    const out = L.redactSensitive(FAKE_INVOICE);
+    for (const secret of ['Example Boulevard', 'K1A 0B1', 'K2P 1A1', '613) 555', '613-555', 'shop@example.com',
+                          '1HGCM82633A004352', 'ABC 123', 'Maple Crescent'])
+        assert.ok(!out.includes(secret), 'still contains: ' + secret);
+    for (const keep of ['Invoice #4110001497', '05/29/2025', '05/30/2025', 'Mazda 3 Sport', 'Mileage In: 192,633 km',
+                        '$1,631.37', '$2.99', '$224.99', 'Total: $4,370.55', 'WHEEL ALIGNMENT', 'RECYCLING FEE', 'Page 1 of 2'])
+        assert.ok(out.includes(keep), 'lost: ' + keep);
+    // a bare name on its own line cannot be recognised; this is a known limit
+    assert.ok(out.includes('JANE SAMPLE'));
+    assert.deepEqual(L.parseReceiptText(out), L.parseReceiptText(FAKE_INVOICE));
+    assert.equal(L.parseReceiptText(out).odometer, 192633);
+    assert.equal(L.parseReceiptText(out).total, '4370.55');
+});
+
+test('hiding: running it twice changes nothing more', () => {
+    const once = L.redactSensitive(FAKE_INVOICE);
+    assert.equal(L.redactSensitive(once), once);
+});
+
+// ---- multi-page receipts ---------------------------------------------------
+
+test('pages: the first page into an empty box has no divider', () => {
+    const r = L.appendReceiptPages('', ['Page one text']);
+    assert.equal(r.text, 'Page one text');
+    assert.equal(r.added, 1); assert.equal(r.skipped, 0);
+});
+
+test('pages: several pages at once get numbered dividers from page 2', () => {
+    const r = L.appendReceiptPages('', ['AAA', 'BBB', 'CCC']);
+    assert.equal(r.text, 'AAA\n\n--- Page 2 ---\n\nBBB\n\n--- Page 3 ---\n\nCCC');
+    assert.equal(r.added, 3);
+});
+
+test('pages: scanning more later continues the numbering', () => {
+    const first = L.appendReceiptPages('', ['AAA']).text;
+    const second = L.appendReceiptPages(first, ['BBB']).text;
+    const third = L.appendReceiptPages(second, ['CCC', 'DDD']).text;
+    assert.equal(second, 'AAA\n\n--- Page 2 ---\n\nBBB');
+    assert.ok(third.endsWith('--- Page 3 ---\n\nCCC\n\n--- Page 4 ---\n\nDDD'));
+});
+
+test('pages: typed text already in the box counts as page 1', () => {
+    assert.equal(L.appendReceiptPages('typed by hand', ['scan']).text, 'typed by hand\n\n--- Page 2 ---\n\nscan');
+});
+
+test('pages: pages with no text are skipped and counted, and do not use up a number', () => {
+    const r = L.appendReceiptPages('', ['AAA', '  \n ', 'CCC']);
+    assert.equal(r.text, 'AAA\n\n--- Page 2 ---\n\nCCC');
+    assert.equal(r.added, 2); assert.equal(r.skipped, 1);
+    const none = L.appendReceiptPages('keep me', ['', '   ']);
+    assert.equal(none.text, 'keep me'); assert.equal(none.added, 0); assert.equal(none.skipped, 2);
+});
+
+test('pages: every page is redacted, and hidden is reported', () => {
+    const r = L.appendReceiptPages('', ['Visa 4111 1111 1111 1111', 'mail bob@example.com', 'clean']);
+    assert.ok(!/4111|bob@/.test(r.text));
+    assert.equal(r.hidden, true);
+    assert.equal(L.appendReceiptPages('', ['clean']).hidden, false);
+});
+
+test('pages: date and odometer come from the first page, the total from the last', () => {
+    const r = L.appendReceiptPages('', [
+        'Date: 2026-10-12\nMileage In: 61,250 km\nSection total: $400.00',
+        'Date: 2026-11-01\nMileage In: 99,999 km\nGRAND TOTAL $1,234.50']);
+    assert.deepEqual(L.parseReceiptText(r.text), { date: '2026-10-12', odometer: 61250, total: '1234.50' });
+});
+
+test('pages: a two-page invoice fits; far too much is cut and flagged', () => {
+    const page = ('Part: NAPA Rack & Pinion Assembly $1,631.37 1 $1,631.37\n').repeat(60); // about 3,500 characters
+    const ok = L.appendReceiptPages('', [page, page, 'GRAND TOTAL $9,999.99']);
+    assert.equal(ok.truncated, false);
+    assert.ok(ok.text.endsWith('GRAND TOTAL $9,999.99'));
+    const big = L.appendReceiptPages('', ['x'.repeat(8000), 'y'.repeat(8000)]);
+    assert.equal(big.truncated, true);
+    assert.equal(big.text.length, L.MAX_RECEIPT_CHARS);
+});
+
+test('pages: the receipt is still redacted when saved with dividers in it', () => {
+    const joined = L.appendReceiptPages('', ['one', 'two']).text;
+    const saved = L.withReceipt({}, 'x', joined + '\nVisa 4111 1111 1111 1111');
+    assert.ok(saved.x.text.includes('--- Page 2 ---'));
+    assert.ok(!saved.x.text.includes('4111'));
+});
+
+// ---- date sanity -----------------------------------------------------------
+
+test('date sanity: a garbled future or ancient date is ignored in favour of the next real one', () => {
+    const now = new Date(2026, 9, 26);
+    assert.equal(L.parseReceiptDate('Created: 06/29/2029\nFooter Fri 5/30/2025', now), '2025-05-30');
+    assert.equal(L.parseReceiptDate('2031-01-01 then 2025-05-30', now), '2025-05-30');
+    assert.equal(L.parseReceiptDate('Oct 5, 2031 and Oct 6, 2025', now), '2025-10-06');
+    assert.equal(L.parseReceiptDate('1985-03-04', now), null);
+    assert.equal(L.parseReceiptDate('06/29/2029', now), null);
+});
+
+test('date sanity: today and tomorrow are still accepted, three days ahead is not', () => {
+    const now = new Date(2026, 9, 26, 22, 0);
+    assert.equal(L.parseReceiptDate('2026-10-26', now), '2026-10-26');
+    assert.equal(L.parseReceiptDate('2026-10-27', now), '2026-10-27');
+    assert.equal(L.parseReceiptDate('2026-10-29', now), null);
+});
+
+test('date sanity: parseReceiptText passes the clock through', () => {
+    const now = new Date(2026, 9, 26);
+    assert.equal(L.parseReceiptText('Date 2029-06-29\nOdometer 61,250 km', now).date, null);
+});
+
+test('hiding: an email the scanner split with a space is still hidden', () => {
+    assert.equal(L.redactSensitive('Email: shop0411@outlook. com thanks'), 'Email: [email removed] thanks');
+    assert.equal(L.redactSensitive('mail bob@example.ca now'), 'mail [email removed] now');
+    assert.equal(L.redactSensitive('bob@example.com. Thanks'), '[email removed]. Thanks');  // does not swallow the next sentence
+    assert.equal(L.redactSensitive('see x@y.co. Next'), 'see [email removed]. Next');
 });
