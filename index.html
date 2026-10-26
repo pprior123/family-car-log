@@ -1616,6 +1616,7 @@
                 
                 const parsed = VehicleLogic.parseReceiptText(combined.text);
                 const notes = [];
+                let odometerWarning = '';
                 if (!prefix && wasEmpty) {
                     // First scan into an empty box on a new entry: fill in what we can,
                     // but never overwrite an odometer already typed in
@@ -1623,9 +1624,22 @@
                         els.dateInput.value = parsed.date;
                         notes.push('date ' + parsed.date);
                     }
-                    if (parsed.odometer && !els.odoInput.value) {
-                        els.odoInput.value = parsed.odometer;
-                        notes.push('odometer ' + parsed.odometer.toLocaleString() + ' km');
+                    if (!els.odoInput.value) {
+                        // Only fill in an odometer that fits this car's other entries
+                        const vehicle = (document.getElementById('vehicleName').value || '').trim();
+                        const vehicleLogs = vehicle ? logs.filter(l => l.vehicle === vehicle) : [];
+                        const checkDay = parsed.date || els.dateInput.value || VehicleLogic.toLocalDateInput(new Date());
+                        const candidates = VehicleLogic.parseReceiptOdometers(combined.text);
+                        const pick = VehicleLogic.pickReceiptOdometer(candidates, vehicleLogs, checkDay);
+                        if (pick.status === 'rejected') {
+                            odometerWarning = ' The odometer on the receipt (' + pick.rejected.map(v => v.toLocaleString()).join(' or ') +
+                                ' km) does not fit your earlier entries for this car, so it was not filled in. Please check it.';
+                        } else if (pick.value) {
+                            els.odoInput.value = pick.value;
+                            notes.push('odometer ' + pick.value.toLocaleString() + ' km' + (pick.status === 'unchecked'
+                                ? ' (no earlier entries to check it against, please verify)'
+                                : ' (fits your earlier entries)'));
+                        }
                     }
                 } else {
                     // Existing entry, or adding pages to text that is already there: just report
@@ -1638,6 +1652,7 @@
                 const verb = !prefix && wasEmpty ? ' Filled in: ' : ' Found: ';
                 els.status.textContent = '✅ Read ' + combined.added + ' ' + pageWord + '.' +
                     (notes.length ? verb + notes.join(', ') + '.' : '') +
+                    odometerWarning +
                     (combined.hidden ? ' Card, email, phone, address and ID details were hidden.' : '') +
                     (failed + combined.skipped > 0 ? ' ' + (failed + combined.skipped) + ' photo(s) had no readable text.' : '') +
                     (all.length > files.length ? ' Only the first ' + MAX_RECEIPT_PAGES + ' photos were read.' : '') +

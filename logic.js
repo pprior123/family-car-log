@@ -371,16 +371,52 @@
         return null;
     }
 
-    // Odometer reading near a keyword such as "odometer" or "mileage".
-    function parseReceiptOdometer(text) {
-        const re = /(?:odometer|odo|mileage|milage|kilometers|kilometres|kms?)\b[^\d\n]{0,20}(\d{1,3}(?:[ ,]\d{3})+|\d{4,7})(?!\d)/gi;
+    // Every odometer-looking number near a keyword such as "odometer" or "mileage",
+    // in the order they appear (no duplicates). OCR often drops or changes a digit,
+    // so callers should check these against what they already know.
+    function parseReceiptOdometers(text) {
+        const re = /(?:odometer|odo|mileage|milage|kilometers|kilometres|kms?)\b[^\d\n]{0,20}(\d{1,3}(?:,[ ]?\d{3}|[ ]\d{3})+|\d{4,7})(?!\d)/gi;
         const s = String(text || '');
+        const found = [];
         let m;
         while ((m = re.exec(s))) {
             const value = parseInt(m[1].replace(/[ ,]/g, ''), 10);
-            if (value >= 1000 && value <= 999999) return value;
+            if (value >= 1000 && value <= 999999 && found.indexOf(value) === -1) found.push(value);
         }
-        return null;
+        return found;
+    }
+
+    function parseReceiptOdometer(text) {
+        const all = parseReceiptOdometers(text);
+        return all.length ? all[0] : null;
+    }
+
+    /*
+     * Choose the receipt odometer that fits the car's other entries.
+     * The reading must be at least the highest reading logged on or before the
+     * receipt's date, and at most the lowest reading logged after it (50 km of
+     * slack either way). With no earlier entries there is nothing to check
+     * against, so the first candidate is returned as "unchecked".
+     *   status: 'checked' | 'unchecked' | 'rejected' | 'none'
+     */
+    function pickReceiptOdometer(candidates, vehicleLogs, day) {
+        const list = candidates || [];
+        if (!list.length) return { value: null, status: 'none' };
+        const TOLERANCE = 50;
+        let lower = null, upper = null, known = 0;
+        (vehicleLogs || []).forEach(l => {
+            const odo = Number(l.odometer);
+            if (!isFinite(odo) || !l.date) return;
+            known++;
+            if (!day || toLocalDateInput(new Date(l.date)) <= day) lower = lower === null ? odo : Math.max(lower, odo);
+            else upper = upper === null ? odo : Math.min(upper, odo);
+        });
+        if (known === 0) return { value: list[0], status: 'unchecked' };
+        const fits = v => (lower === null || v >= lower - TOLERANCE) && (upper === null || v <= upper + TOLERANCE);
+        const good = list.find(fits);
+        return good !== undefined
+            ? { value: good, status: 'checked' }
+            : { value: null, status: 'rejected', rejected: list };
     }
 
     // The last "total" style amount on the receipt, as a string like "123.45".
@@ -634,6 +670,8 @@
         buildOdometerChartConfig: buildOdometerChartConfig,
         parseReceiptDate: parseReceiptDate,
         parseReceiptOdometer: parseReceiptOdometer,
+        parseReceiptOdometers: parseReceiptOdometers,
+        pickReceiptOdometer: pickReceiptOdometer,
         parseReceiptTotal: parseReceiptTotal,
         parseReceiptText: parseReceiptText,
         cleanReceiptText: cleanReceiptText,

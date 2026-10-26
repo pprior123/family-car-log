@@ -765,3 +765,62 @@ test('hiding: an email the scanner split with a space is still hidden', () => {
     assert.equal(L.redactSensitive('bob@example.com. Thanks'), '[email removed]. Thanks');  // does not swallow the next sentence
     assert.equal(L.redactSensitive('see x@y.co. Next'), 'see [email removed]. Next');
 });
+
+// ---- odometer sanity -------------------------------------------------------
+
+const clog = (date, odo) => log(date, odo);
+
+test('odometers: every keyword hit in order, no duplicates, tiny numbers dropped', () => {
+    assert.deepEqual(L.parseReceiptOdometers('Mileage In: 1199 km\nMileage Out 192,633 km\nOdometer: 192,633\nkm 12'), [1199, 192633]);
+    assert.deepEqual(L.parseReceiptOdometers('nothing here'), []);
+    assert.equal(L.parseReceiptOdometer('Mileage In: 1199\nMileage Out 192,633'), 1199); // first, same as before
+});
+
+test('odometers: a space after the comma, as OCR sometimes writes it', () => {
+    assert.deepEqual(L.parseReceiptOdometers('Mileage In: 192, 633 km'), [192633]);
+    assert.deepEqual(L.parseReceiptOdometers('Mileage In: 192 633 km'), [192633]);
+});
+
+test('pick odometer: no earlier entries means unchecked, first candidate', () => {
+    assert.deepEqual(L.pickReceiptOdometer([192633, 1199], [], '2025-05-30'), { value: 192633, status: 'unchecked' });
+    assert.deepEqual(L.pickReceiptOdometer([], [clog('2025-01-01', 1000)], '2025-05-30'), { value: null, status: 'none' });
+});
+
+test('pick odometer: a number that fits between the entries before and after is accepted', () => {
+    const logs = [clog('2025-01-01', 190000), clog('2025-09-01', 195000)];
+    assert.deepEqual(L.pickReceiptOdometer([192633], logs, '2025-05-30'), { value: 192633, status: 'checked' });
+});
+
+test('pick odometer: a misread number is rejected and a later candidate that fits is used', () => {
+    const logs = [clog('2025-01-01', 190000), clog('2025-09-01', 195000)];
+    assert.equal(L.pickReceiptOdometer([1199, 192633], logs, '2025-05-30').value, 192633);
+    for (const bad of [1199, 92633, 102633, 492633, 1920]) {
+        const r = L.pickReceiptOdometer([bad], logs, '2025-05-30');
+        assert.equal(r.value, null, String(bad));
+        assert.equal(r.status, 'rejected');
+        assert.deepEqual(r.rejected, [bad]);
+    }
+});
+
+test('pick odometer: an old receipt can be lower than the car\'s latest reading', () => {
+    const logs = [clog('2024-01-01', 150000), clog('2026-06-01', 230000)];
+    assert.equal(L.pickReceiptOdometer([192633], logs, '2025-05-30').status, 'checked');
+});
+
+test('pick odometer: only a later entry exists (receipt is the oldest) or only an earlier one', () => {
+    assert.equal(L.pickReceiptOdometer([50000], [clog('2026-01-01', 60000)], '2025-05-30').status, 'checked');
+    assert.equal(L.pickReceiptOdometer([70000], [clog('2026-01-01', 60000)], '2025-05-30').status, 'rejected');
+    assert.equal(L.pickReceiptOdometer([70000], [clog('2025-01-01', 60000)], '2025-05-30').status, 'checked');
+    assert.equal(L.pickReceiptOdometer([50000], [clog('2025-01-01', 60000)], '2025-05-30').status, 'rejected');
+});
+
+test('pick odometer: 50 km of slack either side, no more', () => {
+    const logs = [clog('2025-05-30', 100000)];
+    assert.equal(L.pickReceiptOdometer([99950], logs, '2025-05-30').status, 'checked');
+    assert.equal(L.pickReceiptOdometer([99949], logs, '2025-05-30').status, 'rejected');
+});
+
+test('pick odometer: entries with bad data are ignored; all-bad data counts as nothing to check against', () => {
+    const logs = [{ date: '2025-01-01T12:00:00Z', odometer: 'abc' }, { odometer: 5 }];
+    assert.equal(L.pickReceiptOdometer([192633], logs, '2025-05-30').status, 'unchecked');
+});

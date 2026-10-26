@@ -278,6 +278,7 @@ const store = (page, key) => page.evaluate(k => localStorage.getItem(k), key);
     await check('several photos at once: read in order, divider between pages, date/odometer from page 1, total from the last page', async () => {
       await page.click('button:has-text("Cancel") >> nth=0').catch(() => {});
       await page.click('#addButton');
+      await page.fill('#vehicleName', 'Scanner Car');   // a car with no earlier entries to check against
       await page.fill('#receiptText', ''); await page.fill('#odometer', ''); await page.fill('#logDate', '2026-01-01');
       await page.evaluate(([a, b]) => { window.__ocrQueue = [a, b]; window.__statusSeen = []; }, [PAGE1, PAGE2]);
       await page.setInputFiles('#receiptFile', [PNGF(1), PNGF(2)]);
@@ -351,6 +352,44 @@ const store = (page, key) => page.evaluate(k => localStorage.getItem(k), key);
     });
 
     assert.deepEqual(page.errors, [], 'no page errors during scanning');
+    await ctx.close();
+  }
+
+  console.log('Odometer check against earlier entries');
+  {
+    const e = (id, date, odo) => ({ id, vehicle: 'Civic', odometer: odo, category: 'maintenance', notes: id, date: date + 'T17:00:00.000Z', displayDate: date, displayTime: '1:00 PM' });
+    const logs = [e('a', '2025-01-01', 190000), e('b', '2025-09-01', 195000)];
+    const init = "localStorage.setItem('vehicleLogUseCloud','false');localStorage.setItem('vehicleLogs', JSON.stringify(" + JSON.stringify(logs) + "));";
+    const { ctx, page } = await newPage(browser, { init });
+    const PNGF = n => ({ name: 'p' + n + '.png', mimeType: 'image/png', buffer: PNG });
+    const scan = async (vehicle, text) => {
+      if (await page.locator('#addForm.hidden').count()) await page.click('#addButton');
+      await page.fill('#vehicleName', vehicle);
+      await page.fill('#odometer', ''); await page.fill('#receiptText', '');
+      await page.evaluate(t => { window.__ocrQueue = [t]; }, text);
+      await page.setInputFiles('#receiptFile', [PNGF(1)]);
+      await page.waitForFunction(() => document.getElementById('receiptStatus').textContent.startsWith('✅') || document.getElementById('receiptStatus').textContent.startsWith('⚠️'));
+      return page.textContent('#receiptStatus');
+    };
+
+    await check('a misread first number is skipped; the later one that fits this car is used', async () => {
+      const status = await scan('Civic', 'Mileage In: 1199 km\nMileage Out 192,633 km\nFri 5/30/2025');
+      assert.equal(await page.inputValue('#odometer'), '192633');
+      assert.match(status, /192,633 km \(fits your earlier entries\)/);
+      assert.ok(!/not filled in/.test(status));
+    });
+    await check('only a misread number: the odometer is left empty and the person is told why', async () => {
+      const status = await scan('Civic', 'Mileage In: 1199 km\nFri 5/30/2025');
+      assert.equal(await page.inputValue('#odometer'), '');
+      assert.match(status, /1,199 km\) does not fit your earlier entries for this car, so it was not filled in/);
+      assert.equal(await page.inputValue('#logDate'), '2025-05-30');   // the date is still filled in
+    });
+    await check('a car with no entries yet: filled in, but flagged to verify', async () => {
+      const status = await scan('Brand New Car', 'Mileage In: 12,345 km\nFri 5/30/2025');
+      assert.equal(await page.inputValue('#odometer'), '12345');
+      assert.match(status, /no earlier entries to check it against, please verify/);
+    });
+    assert.deepEqual(page.errors, []);
     await ctx.close();
   }
 
